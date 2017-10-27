@@ -1,118 +1,31 @@
+#include "system_base.h"
+#include "ros_msg.h"
+#include "cv_imgproc.h"
+#include "pcl_imgproc.h"
 
-#define GLFW_INCLUDE_GLU
-#include <GLFW/glfw3.h>
-//#include <GLFW/class.h>
-
-#include <sstream>
-#include <vector>
 #include <algorithm>
-#include <iostream>
-#include <chrono>
-#include <iterator>
-#include <functional>
-#include <vector>
-#include <cmath>
 #include <time.h>
+#include <chrono>
 #include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <librealsense/rs.hpp>
 
-#include <ros/ros.h>
-#include <std_msgs/UInt16MultiArray.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/image_encodings.h>
-#include <agv_3d_camera/SegImg.h>
-
-#include <pcl/io/pcd_io.h>
-#include <pcl/io/io.h>
-#include <pcl/point_types.h>
-#include <pcl/console/parse.h>
-#include <pcl/common/common_headers.h>
-#include <pcl/features/normal_3d.h>
-#include <pcl/features/integral_image_normal.h>
-#include <pcl_conversions/pcl_conversions.h>
-
-#include <image_transport/image_transport.h>
-#include <cv_bridge/cv_bridge.h>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/rgbd.hpp>
-
-using namespace cv;
-using namespace std;
-
+#include <cob_3d_mapping_common/point_types.h>
+#include <cob_3d_segmentation/impl/fast_segmentation.hpp>
+#include <cob_3d_features/organized_normal_estimation_omp.h>
 
 // Global data
 #define NOISY			3
 #define CAR_WIDTH		60
 #define WINDOW_DIM		5
-#define PROC_NUM		1
-#define CHILD_END		0
-#define PARENT_END		1
-#define CHILD_FAILURE	-1
+#define THRD_NUM		1
 
 static const std::string OPENCV_WINDOW = "Image window";
-typedef const boost::function< void( const agv_3d_camera::SegImgConstPtr & ) > callback;
-
-// Class daclare
-class SegImg
-{
-	public:
-		static int count;
-		static pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_ptr;
-		
-		pcl::PointCloud<pcl::PointXYZRGB> PointCloud()
-		{
-			return *pcl_ptr;
-		}
-	
-		void reset()
-		{
-			count = 0;
-		}
-	
-		void fillup( const agv_3d_camera::SegImgConstPtr& msg )
-		{
-			count++;
-			cout<<"XXXXXXXX"<<endl;
-			if( pcl_ptr->width != msg->width || pcl_ptr->height != msg->height )
-				resize( msg->width, msg->height );
-			int seg_size = floor( pcl_ptr->width * pcl_ptr->height / PROC_NUM );
-			for( int i = 0; i < msg->size; i++ )
-			{
-				//cout << "z=" << msg->z[ i ] << endl;
-				pcl_ptr->points[ i + msg->seg_id * seg_size ].x = msg->x[ i ];
-				pcl_ptr->points[ i + msg->seg_id * seg_size ].y = msg->y[ i ];
-				pcl_ptr->points[ i + msg->seg_id * seg_size ].z = msg->z[ i ];
-				pcl_ptr->points[ i + msg->seg_id * seg_size ].r = msg->r[ i ];
-				pcl_ptr->points[ i + msg->seg_id * seg_size ].g = msg->g[ i ];
-				pcl_ptr->points[ i + msg->seg_id * seg_size ].b = msg->b[ i ];
-			}
-		}
-		
-		void resize(int dw, int dh)
-		{
-    		pcl_ptr->clear( );
-			pcl_ptr->width = dw;
-			pcl_ptr->height = dh;
-			pcl_ptr->is_dense = false;
-			pcl_ptr->points.resize( dw * dh );
-		}
-};
-int SegImg::count = 0;
-pcl::PointCloud<pcl::PointXYZRGB>::Ptr SegImg::pcl_ptr( new pcl::PointCloud<pcl::PointXYZRGB> );
 
 // Function list
+int RS2PCD( rs::device *dev, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg &pcl );
+void Depth2Color( agv_3d_camera::SegImg &pcl );
 void imageCallback(const sensor_msgs::ImageConstPtr& msg);
-
-int RS2PCD( rs::device *dev, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg *pcl_ptr );
-
-void CopyNPreProc( uint16_t *depth_image, uint8_t  *color_image, rs::intrinsics *color_intrin, std::vector<uint16_t> *buffer_depth, float scale, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg *pcl_ptr );
-
+void CopyNPreProc( int thrd_idx, uint16_t *depth_image, uint8_t  *color_image, rs::intrinsics *color_intrin, std::vector<uint16_t> *buffer_depth, float scale, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg &pcl );
 uint16_t MedianFilter( std::vector<uint16_t> *input, uint32_t target_index, uint16_t img_W, uint16_t img_H, uint8_t window_dim );
-void Depth2Color( agv_3d_camera::SegImg *pcl_ptr );
 
 
 // Function implementation
@@ -135,7 +48,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
     cv::waitKey(1);
 }
 
-int RS2PCD( rs::device *dev, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg *pcl_ptr )
+int RS2PCD( rs::device *dev, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg &pcl )
 {
     // Wait for new frame data
     dev->wait_for_frames();
@@ -153,48 +66,57 @@ int RS2PCD( rs::device *dev, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg *
     int dh = color_intrin.height;
 	int dwh = dw * dh;
 
-
-
 	// Initializing point cloud msg 
-	pcl_ptr->width = dw;
-	pcl_ptr->height = dh;
-	pcl_ptr->size = dwh;
-	pcl_ptr->x.resize( dwh );
-	pcl_ptr->y.resize( dwh );
-	pcl_ptr->z.resize( dwh );
-	pcl_ptr->r.resize( dwh );
-	pcl_ptr->g.resize( dwh );
-	pcl_ptr->b.resize( dwh );
+	pcl.width = dw;
+	pcl.height = dh;
+	pcl.size = dwh;
+	pcl.x.resize( dwh );
+	pcl.y.resize( dwh );
+	pcl.z.resize( dwh );
+	pcl.r.resize( dwh );
+	pcl.g.resize( dwh );
+	pcl.b.resize( dwh );
 	
     // Set the cloud up to be used    
     buffer_depth.clear();
     buffer_depth.assign( depth_image, depth_image + dwh );
     
-    // Multi-process
-	// Create child process
-    CopyNPreProc( depth_image, color_image, &color_intrin, &buffer_depth, scale, l_d, pcl_ptr );
+    // Single thread
+    CopyNPreProc( 0, depth_image, color_image, &color_intrin, &buffer_depth, scale, l_d, pcl );
+    /* Multi-thread
+    int thrd_idx = 0;
+    std::thread mthrd[ THRD_NUM ];
+    for( thrd_idx = 0; thrd_idx < THRD_NUM; thrd_idx++)
+    {
+	    auto bindCNPP = std::bind( CopyNPreProc, thrd_idx, depth_image, color_image, &color_intrin, &buffer_depth, scale, l_d, std::ref( pcl ) );
+    	mthrd[ thrd_idx ] = std::thread( bindCNPP );
+    }
+    for( thrd_idx = 0; thrd_idx < THRD_NUM; thrd_idx++)
+    {
+    	mthrd[ thrd_idx ].join();
+    }
+    */
     l_d->clear();
     l_d->assign( depth_image, depth_image + dwh );
-    return PARENT_END;
+    return 1;
 }
 
 // Pre-process and copy data from realsense original data to point cloud data
-void CopyNPreProc( uint16_t *depth_image, uint8_t  *color_image, rs::intrinsics *color_intrin, std::vector<uint16_t> *buffer_depth, float scale, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg *pcl_ptr )
+void CopyNPreProc( int thrd_idx, uint16_t *depth_image, uint8_t  *color_image, rs::intrinsics *color_intrin, std::vector<uint16_t> *buffer_depth, float scale, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg &pcl )
 {
 	int dw = color_intrin->width;
 	int dh = color_intrin->height;
-	int dwh = dw * dh;
-
+	int seg_size = dw * dh / THRD_NUM;
 	/*
-	pcl_ptr->clear( );
-	pcl_ptr->width = dw;
-	pcl_ptr->height = dh;
-	pcl_ptr->is_dense = false;
-	pcl_ptr->points.resize( dw * dh );
+	pcl.clear( );
+	pcl.width = dw;
+	pcl.height = dh;
+	pcl.is_dense = false;
+	pcl.points.resize( dw * dh );
 	*/
     
     // Iterate the data space
-    for( int i = 0; i < dw * dh; i++ )
+    for( int i = thrd_idx * seg_size; i < ( thrd_idx + 1 ) * seg_size; i++ )
     {
    		// Fetch pointers of point cloud data structure for assigning values
         uint8_t R = color_image[ i * 3 ];
@@ -205,31 +127,33 @@ void CopyNPreProc( uint16_t *depth_image, uint8_t  *color_image, rs::intrinsics 
    		float *dp_y;
         float *dp_z;
         /*
-   		dp_x = &( pcl_ptr->points[ i ].x );
-        dp_y = &( pcl_ptr->points[ i ].y );
-        dp_z = &( pcl_ptr->points[ i ].z );
+   		dp_x = &( pcl.points[ i ].x );
+        dp_y = &( pcl.points[ i ].y );
+        dp_z = &( pcl.points[ i ].z );
         */
-        dp_x = &( pcl_ptr->x[ i ] );
-        dp_y = &( pcl_ptr->y[ i ] );
-        dp_z = &( pcl_ptr->z[ i ] );
+        dp_x = &( pcl.x[ i ] );
+        dp_y = &( pcl.y[ i ] );
+        dp_z = &( pcl.z[ i ] );
         
         uint8_t *cp_r;
         uint8_t *cp_g;
         uint8_t *cp_b;
         /*
-   		cp_r = &( pcl_ptr->points[ i ].r );
-        cp_g = &( pcl_ptr->points[ i ].g );
-        cp_b = &( pcl_ptr->points[ i ].b );
+   		cp_r = &( pcl.points[ i ].r );
+        cp_g = &( pcl.points[ i ].g );
+        cp_b = &( pcl.points[ i ].b );
 		*/
-        cp_r = &( pcl_ptr->r[ i ] );
-        cp_g = &( pcl_ptr->g[ i ] );
-        cp_b = &( pcl_ptr->b[ i ] );
+        cp_r = &( pcl.r[ i ] );
+        cp_g = &( pcl.g[ i ] );
+        cp_b = &( pcl.b[ i ] );
 	
-        const rs::float2 pixel = { float(i % dw), float(floor(i / dw)) };
+        const rs::float2 pixel = { float( i % dw ),  float( floor( i / dw ) ) };
         uint16_t last_dep = 0;
-       /*
+
+/***********Pre-proccess************
         // Apply filter
         depth_image[ i ] = MedianFilter( buffer_depth, i, dw, dh, WINDOW_DIM );
+       
         // Compare point with previous value, replace NaN error or normalize the value
    		if( l_d->size() == dwh && ( *l_d )[ i ] > 0 )
 	       	last_dep = ( *l_d )[ i ];
@@ -244,7 +168,7 @@ void CopyNPreProc( uint16_t *depth_image, uint8_t  *color_image, rs::intrinsics 
         *dp_y = point.y;
            
         // Draw lines according to robot width
-        if( ( CAR_WIDTH > 0 && ( round( point.x * 100 ) == 0 || round( point.x * 100 ) == CAR_WIDTH / 2 || round( point.x * 100 ) == - CAR_WIDTH / 2 ) ) || point.y > NOISY )
+        if( point.y > NOISY ) // ( CAR_WIDTH > 0 && ( round( point.x * 100 ) == 0 || round( point.x * 100 ) == CAR_WIDTH / 2 || round( point.x * 100 ) == - CAR_WIDTH / 2 ) ) || 
        		*dp_z = NOISY;
         else
            	*dp_z = point.z;
@@ -263,7 +187,7 @@ uint16_t MedianFilter( std::vector<uint16_t> *input, uint32_t target_index, uint
 	uint16_t col = target_index % img_W, row = floor( target_index / img_W );
 	
 	if( window_dim % 2 == 0 )
-		cout << "ERROR: Filter window's dimension should be odd." << endl;
+		std::cout << "ERROR: Filter window's dimension should be odd." << std::endl;
 	else if( !( col < radius || col >= img_W - radius || row < radius || row >= img_H - radius ) )
 	{
 		std::vector<uint16_t> buffer;
@@ -282,11 +206,10 @@ uint16_t MedianFilter( std::vector<uint16_t> *input, uint32_t target_index, uint
 }
 
 // Convert depth to color
-void Depth2Color( agv_3d_camera::SegImg *pcl_ptr )
+void Depth2Color( agv_3d_camera::SegImg &pcl )
 {
-	for( int i = 0; i < pcl_ptr->size; i++ )
+	for( int i = 0; i < pcl.size; i++ )
 	{
-		pcl_ptr->r[ i ] = pcl_ptr->g[ i ] = pcl_ptr->b[ i ] = ceil( float( pcl_ptr->z[ i ] / NOISY ) * 255);
+		pcl.r[ i ] = pcl.g[ i ] = pcl.b[ i ] = ceil( float( pcl.z[ i ] / NOISY ) * 255);
 	}
 }
-		

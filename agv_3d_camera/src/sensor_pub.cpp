@@ -1,6 +1,3 @@
-// License: Apache 2.0. See LICENSE file in root directory.
-// Copyright(c) 2015 Intel Corporation. All Rights Reserved.
-
 #include "function.h"
 
 
@@ -29,7 +26,7 @@ int main(int argc, char * argv[]) try
     sensor_msgs::Image image;
     
     //pcl::PointCloud<pcl::PointXYZRGB> pcl_ptr = new pcl::PointCloud<pcl::PointXYZRGB>;
-    agv_3d_camera::SegImg *pcl_ptr = new agv_3d_camera::SegImg;
+    agv_3d_camera::SegImg pcl;
     std::vector<uint16_t> last_depth;
     last_depth.clear();
     
@@ -38,15 +35,15 @@ int main(int argc, char * argv[]) try
     while( dev.is_streaming() && nh.ok() )
     {
       t1=clock();
-      RS2PCD( &dev, &last_depth, pcl_ptr );
-	  Depth2Color( pcl_ptr );
+      RS2PCD( &dev, &last_depth, pcl );
+	  //Depth2Color( pcl );
+      std::cout << (clock()-t1)/(double)(CLOCKS_PER_SEC) << " sec" << std::endl;
 
-	  //pcl::toROSMsg ( *pcl_ptr, image );
+	  //pcl::toROSMsg ( pcl, image );
 	  //img_pub.publish ( image );
-	  img_pub.publish ( *pcl_ptr );
+	  img_pub.publish ( pcl );
 	  ros::spinOnce ();
 	  loop_rate.sleep ();
-      cout << (clock()-t1)/(double)(CLOCKS_PER_SEC) << "_____" << getpid() << endl;
     }
     return EXIT_SUCCESS;
 }

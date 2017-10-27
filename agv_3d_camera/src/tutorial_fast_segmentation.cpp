@@ -1,33 +1,9 @@
-#include <ros/ros.h>
-
-#include <pcl/point_types.h>
-#include <pcl_ros/point_cloud.h>
-#include <agv_3d_camera/SegImg.h>
-#include "cob_3d_mapping_common/point_types.h"
-#include "cob_3d_segmentation/impl/fast_segmentation.hpp"
-#include "cob_3d_features/organized_normal_estimation_omp.h"
-
-#include <image_transport/image_transport.h>
-#include <cv_bridge/cv_bridge.h>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/rgbd.hpp>
-
-static const std::string OPENCV_WINDOW = "Image window";
-
-using namespace cv;
-using namespace std;
-
-// specify point types (at least: XYZRGB, Normal, PointLabel)
-typedef cob_3d_segmentation::FastSegmentation<  pcl::PointXYZRGB,  pcl::Normal,  PointLabel> Segmentation3d;
-typedef cob_3d_features::OrganizedNormalEstimationOMP<  pcl::PointXYZRGB,  pcl::Normal,  PointLabel> NormalEstimation;
-
+#include "function.h"
 void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
 {
   /************ compute segments ***************/
   pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
   pcl::PointCloud<PointLabel>::Ptr labels(new pcl::PointCloud<PointLabel>);
-
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr input(new pcl::PointCloud<pcl::PointXYZRGB>);
 
   input->clear( );
@@ -35,7 +11,6 @@ void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
   input->height = msg->height;
   input->is_dense = false;
   input->points.resize( msg->width * msg->height );
-  cout << "xxxx" <<endl;
   for( int i = 0; i < msg->size; i++ )
   {
   	input->points[ i ].x = msg->x[ i ];
@@ -46,16 +21,23 @@ void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
   	input->points[ i ].b = msg->b[ i ];
   }
 
-/*
+  sensor_msgs::Image image;  
+  cv_bridge::CvImagePtr cv_ptr;
+  
+  pcl::toROSMsg ( *input, image );
+  cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
+  cv::imshow("original", cv_ptr->image);
+  cv::waitKey(1);
+
   // Segmentation requires estimated normals for every 3d point
-  NormalEstimation one;
+  NormalEstimationCOB one;
   // labels are used to mark NaN and border points as a
   // preparation for the segmantation
   one.setOutputLabels(labels);
   // sets the pixelwindow size, radial step size and window step size
-  one.setPixelSearchRadius(8,2,2);
+  one.setPixelSearchRadius(2,2,2);
   // sets the threshold for border point determination
-  one.setSkipDistantPointThreshold(8);
+  one.setSkipDistantPointThreshold(0.2);
   one.setInputCloud(input);
   one.compute(*normals);
   Segmentation3d seg;
@@ -66,17 +48,15 @@ void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
   seg.setSeedMethod(cob_3d_segmentation::SEED_RANDOM);
   seg.setInputCloud(input);
   seg.compute();
-  */
+  
   /************ access results ***************/
+  
   // for visualization you can map the segments to a rgb point cloud
   //pcl::PointCloud<pcl::PointXYZRGB>::Ptr points( new pcl::PointCloud<pcl::PointXYZRGB> );
   //*points = *input; // deep copy input coordinates
-  //seg.mapSegmentColor(input);
+  seg.mapSegmentColor(input);
 
-  sensor_msgs::Image image;
   pcl::toROSMsg ( *input, image );
-  
-  cv_bridge::CvImagePtr cv_ptr;
   cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
   cv::imshow(OPENCV_WINDOW, cv_ptr->image);
   cv::waitKey(1);
@@ -140,11 +120,9 @@ int main(int argc, char** argv)
   ros::init(argc,argv,"fast_segmentation_tutorial");
   ros::NodeHandle nh;
 
-  cout<<"111"<<endl;
   // Create a ROS subscriber for the input point cloud
   ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
 
-  cout<<"222"<<endl;
   // Spin
   ros::spin ();
 }

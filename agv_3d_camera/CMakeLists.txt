@@ -198,10 +198,9 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/agv_3d_camera_node.cpp)
-add_executable(tutorial_fast_segmentation src/tutorial_fast_segmentation.cpp)
-add_executable(combineImg src/combineImg.cpp)
 add_executable(sensor_pub src/sensor_pub.cpp)
 add_executable(sensor_sub src/sensor_sub.cpp)
+add_executable(scc_segmentation src/scc_segmentation.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -217,10 +216,9 @@ add_executable(sensor_sub src/sensor_sub.cpp)
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(tutorial_fast_segmentation ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
-target_link_libraries(combineImg ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(sensor_pub ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(sensor_sub ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
+target_link_libraries(scc_segmentation ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 #############
 ## Install ##
 #############
@@ -259,8 +257,7 @@ install(
     TARGETS
     sensor_pub
     sensor_sub
-    tutorial_fast_segmentation
-	combineImg
+	scc_segmentation
 	
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
