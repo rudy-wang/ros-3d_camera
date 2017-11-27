@@ -5,6 +5,8 @@
 #include <sstream>
 #include <cmath>
 #include <vector>
+#include <future>
+#include <time.h>
 #include <functional>
 
 #include <librealsense/rs.hpp>

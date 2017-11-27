@@ -2,6 +2,7 @@
 #include "ros_msg.h"
 #include "cv_imgproc.h"
 #include "pcl_imgproc.h"
+#include "pcl_base.h"
 
 #include <algorithm>
 #include <time.h>
@@ -13,7 +14,7 @@
 #include <cob_3d_features/organized_normal_estimation_omp.h>
 
 // Global data
-#define NOISY			3
+#define NOISY				20
 #define CAR_WIDTH		60
 #define WINDOW_DIM		5
 #define THRD_NUM		1
@@ -168,9 +169,9 @@ void CopyNPreProc( int thrd_idx, uint16_t *depth_image, uint8_t  *color_image, r
         *dp_y = point.y;
            
         // Draw lines according to robot width
-        if( point.y > NOISY ) // ( CAR_WIDTH > 0 && ( round( point.x * 100 ) == 0 || round( point.x * 100 ) == CAR_WIDTH / 2 || round( point.x * 100 ) == - CAR_WIDTH / 2 ) ) || 
-       		*dp_z = NOISY;
-        else
+        if( point.z > NOISY ) // ( CAR_WIDTH > 0 && ( round( point.x * 100 ) == 0 || round( point.x * 100 ) == CAR_WIDTH / 2 || round( point.x * 100 ) == - CAR_WIDTH / 2 ) ) || 
+       		*dp_z = 0;
+       	else
            	*dp_z = point.z;
         /**/
    		*cp_r = R;

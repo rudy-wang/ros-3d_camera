@@ -201,6 +201,7 @@ include_directories(
 add_executable(sensor_pub src/sensor_pub.cpp)
 add_executable(sensor_sub src/sensor_sub.cpp)
 add_executable(scc_segmentation src/scc_segmentation.cpp)
+add_executable(tutorial_fast_segmentation src/tutorial_fast_segmentation.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -219,6 +220,7 @@ add_executable(scc_segmentation src/scc_segmentation.cpp)
 target_link_libraries(sensor_pub ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(sensor_sub ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(scc_segmentation ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
+target_link_libraries(tutorial_fast_segmentation ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 #############
 ## Install ##
 #############
@@ -258,6 +260,7 @@ install(
     sensor_pub
     sensor_sub
 	scc_segmentation
+	tutorial_fast_segmentation
 	
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

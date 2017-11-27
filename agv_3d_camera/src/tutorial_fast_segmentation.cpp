@@ -1,6 +1,15 @@
 #include "function.h"
+typedef cob_3d_segmentation::FastSegmentation<
+  pcl::PointXYZRGB,
+  pcl::Normal,
+  PointLabel> Segmentation3d;
+typedef cob_3d_features::OrganizedNormalEstimationOMP<
+  pcl::PointXYZRGB,
+  pcl::Normal,
+  PointLabel> NormalEstimationCOB;
 void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
 {
+  clock_t t1 = clock();
   /************ compute segments ***************/
   pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
   pcl::PointCloud<PointLabel>::Ptr labels(new pcl::PointCloud<PointLabel>);
@@ -21,23 +30,27 @@ void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
   	input->points[ i ].b = msg->b[ i ];
   }
 
+					//point_( i , 6 ) = floor( 0.299 * msg->r[ i ] + 0.587 * msg->g[ i ] + 0.114 * msg->b[ i ] );
+					//point_( i , 7 ) = floor( -0.169 * msg->r[ i ] - 0.331 * msg->g[ i ] + 0.5 * msg->b[ i ] + 128 );
+					//point_( i , 8 ) = floor( 0.5 * msg->r[ i ] - 0.419 * msg->g[ i ] - 0.081 * msg->b[ i ]  + 128 );
   sensor_msgs::Image image;  
   cv_bridge::CvImagePtr cv_ptr;
-  
+/*  
   pcl::toROSMsg ( *input, image );
   cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
   cv::imshow("original", cv_ptr->image);
   cv::waitKey(1);
-
+*/
+/*
   // Segmentation requires estimated normals for every 3d point
   NormalEstimationCOB one;
   // labels are used to mark NaN and border points as a
   // preparation for the segmantation
   one.setOutputLabels(labels);
   // sets the pixelwindow size, radial step size and window step size
-  one.setPixelSearchRadius(2,2,2);
+  one.setPixelSearchRadius(20,10,10);
   // sets the threshold for border point determination
-  one.setSkipDistantPointThreshold(0.2);
+  one.setSkipDistantPointThreshold(2);
   one.setInputCloud(input);
   one.compute(*normals);
   Segmentation3d seg;
@@ -54,7 +67,8 @@ void cloud_cb(const agv_3d_camera::SegImgConstPtr& msg)
   // for visualization you can map the segments to a rgb point cloud
   //pcl::PointCloud<pcl::PointXYZRGB>::Ptr points( new pcl::PointCloud<pcl::PointXYZRGB> );
   //*points = *input; // deep copy input coordinates
-  seg.mapSegmentColor(input);
+  //seg.mapSegmentColor(input);
+	std::cout << "ProcTime: " << (clock()-t1)/(double)(CLOCKS_PER_SEC) << " sec" << std::endl;
 
   pcl::toROSMsg ( *input, image );
   cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);

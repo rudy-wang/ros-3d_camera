@@ -11,8 +11,11 @@ int main(int argc, char * argv[]) try
     rs::device & dev = *ctx.get_device(0);
 	apply_depth_control_preset( &dev, 0);
 	
+	double a,b,c,d;
 	dev.set_option( rs::option::r200_depth_clamp_min , 0);
 	dev.set_option( rs::option::r200_depth_clamp_max , 5000);
+	dev.set_option( rs::option::color_contrast , 16);
+	dev.set_option( rs::option::color_gamma , 220);
 	
     dev.enable_stream(rs::stream::depth, 480, 360, rs::format::any, 30);
     dev.enable_stream(rs::stream::color, 640, 480, rs::format::rgb8, 30);
