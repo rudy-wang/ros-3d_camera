@@ -169,7 +169,7 @@ void CopyNPreProc( int thrd_idx, uint16_t *depth_image, uint8_t  *color_image, r
         *dp_y = point.y;
            
         // Draw lines according to robot width
-        if( point.z > NOISY ) // ( CAR_WIDTH > 0 && ( round( point.x * 100 ) == 0 || round( point.x * 100 ) == CAR_WIDTH / 2 || round( point.x * 100 ) == - CAR_WIDTH / 2 ) ) || 
+        if( point.z > NOISY || point.z == 0 ) // ( CAR_WIDTH > 0 && ( round( point.x * 100 ) == 0 || round( point.x * 100 ) == CAR_WIDTH / 2 || round( point.x * 100 ) == - CAR_WIDTH / 2 ) ) || 
        		*dp_z = 0;
        	else
            	*dp_z = point.z;

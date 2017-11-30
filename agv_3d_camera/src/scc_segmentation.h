@@ -39,44 +39,16 @@ void assignCluster( SCCcluster< PARAM_DIM > &clstrHdlr, Eigen::Array< float, Eig
 	}
 }
 
-template< int PARAM_DIM >
-void computeNormal( Eigen::Array< float, Eigen::Dynamic, PARAM_DIM > point )
-{
-	pcl::PointCloud< pcl::PointXYZ >::Ptr cloud( new pcl::PointCloud< pcl::PointXYZ > );
-	cloud->clear();
-	cloud->resize( point.rows() );
-	for( int i = 0; i < point.rows(); i++ )
-	{
-		cloud->points[ i ].x = point( i , 3 );
-		cloud->points[ i ].y = point( i , 4 );
-		cloud->points[ i ].z = point( i , 5 );
-	}
-	pcl::NormalEstimationOMP< pcl::PointXYZ, pcl::Normal > ne;
-	pcl::KdTreeFLANN< pcl::PointXYZ > tree;
-	tree.setInputCloud( cloud );
-	std::vector< int > search_indices( 3 );
-	std::vector< float > distances( 3 );
-	float curvature;
-	for( int i = 0; i < point.rows(); i++ )
-	{
-		tree.nearestKSearch( cloud->points[ i ], 3, search_indices, distances );
-		ne.computePointNormal( *cloud, search_indices, point( i, 0 ), point( i, 1 ), point( i, 2 ), curvature );
-		if( point( i, 0 ) == std::numeric_limits< float >::quiet_NaN() || point( i, 1 ) == std::numeric_limits< float >::quiet_NaN() || point( i, 2 ) == std::numeric_limits< float >::quiet_NaN() )
-		{
-			point( i, 0 ) = point( i, 1 ) = point( i, 2 ) = 0;
-		}
-	}
-}
 
 template< int PARAM_DIM >
 void rgbdSCC( pointXYZC &input, InitSetting< PARAM_DIM > iniSet, InitSetting< PARAM_DIM > iniSet2 )
 {
 	SCCcluster< PARAM_DIM > CclusterHdler( iniSet );	
 	SCCcluster< PARAM_DIM > GclusterHdler( iniSet2 );
-	SCCparallel( CclusterHdler, input.point(), input.Ccluster, 6, 11, 1, ROUGH );
+	SCCparallel( CclusterHdler, input.point(), input.Ccluster, 6, 11, 4, ROUGH );
 	Eigen::Array< int, Eigen::Dynamic, 1 > Gcluster( CclusterHdler.size(), 1 );
-	computeNormal( CclusterHdler.mean() );
-	SCCparallel( GclusterHdler, CclusterHdler.mean(), Gcluster, 0, 9, 1, ROUGH );
+	CclusterHdler.computeNormal();
+	SCCparallel( GclusterHdler, CclusterHdler.mean(), Gcluster, 5, 11, 1, ROUGH );
 	std::cout << GclusterHdler.size() << "___" << GclusterHdler.groupNum() << std::endl;
 	for( int i = 0; i < input.size(); i++ )
 	{
@@ -84,7 +56,7 @@ void rgbdSCC( pointXYZC &input, InitSetting< PARAM_DIM > iniSet, InitSetting< PA
 	}
 	input.showCluster( CclusterHdler, COLOR_ );
 	input.showCluster( GclusterHdler, GEO_ );
-	SCCparallel( GclusterHdler, CclusterHdler.mean(), Gcluster, 0, 9, 1, REFINE );
+	SCCparallel( GclusterHdler, CclusterHdler.mean(), Gcluster, 5, 11, 1, REFINE );
 	for( int i = 0; i < input.size(); i++ )
 	{
 		input.Gcluster[ i ] = Gcluster[ input.Ccluster[ i ] ];

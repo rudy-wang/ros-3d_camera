@@ -1,6 +1,18 @@
 #define COLOR_  1
 #define GEO_  2
+#define POINT 1
+#define MEAN 2
 
+cv::Point mousePos( -1, -1 );
+
+void onMouse( int event, int x, int y, int flags, void *param )
+{
+	if( event == CV_EVENT_MOUSEMOVE )
+	{
+		mousePos.x = x;
+		mousePos.y = y;
+	}
+}
 class pointXYZC
 {
 	public:
@@ -71,6 +83,35 @@ class pointXYZC
 			}			
 		}
 
+		void sharpen( const cv::Mat &src, cv::Mat dst )
+		{
+			cv::Mat kernel( 3, 3, CV_32F, cv::Scalar( 0 ) );
+			kernel.at< float >( 1, 1 ) = 121;
+			kernel.at< float >( 0, 1 ) = -30;
+			kernel.at< float >( 1, 0 ) = -30;
+			kernel.at< float >( 1, 2 ) = -30;
+			kernel.at< float >( 2, 1 ) = -30;
+			cv::filter2D( src, dst, src.depth(), kernel );
+		}
+		void canny()
+		{
+			cv::Mat output( h_, w_, CV_8UC1 );
+			cv::Mat buff( h_, w_, CV_8UC1 );
+			cv::Mat cannyOut( h_, w_, CV_8UC1 );
+			for( int pidx = 0; pidx < size_; pidx++ )
+			{
+				output.data[ pidx ] = point_( pidx, 7 );
+			}
+			/*
+			output.copyTo( cannyOut );
+			cv::Canny( cannyOut, cannyOut, 100, 100, 5, true );
+			buff = cv::Scalar::all( 0 );
+			buff.copyTo( output, cannyOut );
+			*/
+			sharpen( output, buff );
+			cv::imshow("original", output );
+			cv::waitKey(1);
+		}
 		void showImg()
 		{
 			cv::Mat output( h_, w_, CV_8UC3 );
@@ -132,8 +173,39 @@ class pointXYZC
 				cv::circle( output, cv::Point(round(cluster.mean(i,9)), round(cluster.mean(i,10))), 2, cv::Scalar(0,0,255) );
 			}
 			*/
-			cv::imshow( "original", output);
-			cv::waitKey( -1 );
+			cv::Mat output2; 
+			output.copyTo( output2 );
+			while( true )
+			{
+				output2.copyTo( output );
+				if( mousePos.x > 0 && mousePos.y > 0 )
+				{
+					std::stringstream ss;
+					std::stringstream ss2;
+					for( int i = 0; i < 11; i++ )
+					{
+						if( i < 6 )
+						{
+							ss << cluster.mean( Gcluster( mousePos.y * w_ + mousePos.x ), i );
+							ss << "   ";
+						}
+						else
+						{
+							ss2 << cluster.mean( Gcluster( mousePos.y * w_ + mousePos.x ), i );
+							ss2 << "   ";
+						}
+					}
+					cv::Point pos( mousePos.x, mousePos.y);
+					if( pos.x > 260 )
+						pos.x = 260;
+					cv::putText( output, ss.str(), cv::Point(pos.x, pos.y-8), 0, 0.3, cv::Scalar(0,0,255) );
+					cv::putText( output, ss2.str(), pos, 0, 0.3, cv::Scalar(0,0,255) );
+				}
+				cv::imshow( "original", output);
+				cv::setMouseCallback( "original", onMouse, NULL );
+				if( cv::waitKey( 1 ) == 27 )
+					break;
+			}
 		}
 		
 		void showFuseImg( int size, int ctype )

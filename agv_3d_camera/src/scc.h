@@ -14,7 +14,7 @@ class InitSetting
 		Eigen::Array< float, 1, PARAM_DIM > std;
 		std::vector< int > excepIdx;
 		std::vector< int > crispbound;
-		Eigen::Array< float, 1, PARAM_DIM > ignoreW;
+		Eigen::Array< float, Eigen::Dynamic, PARAM_DIM > ignoreW;
 };
 
 template< int PARAM_DIM >
@@ -34,7 +34,7 @@ class SCCcluster
 		
 		int groupNum(){ return groupMemberNum_.size(); }
 		
-		int groupNum( int gidx ){ return groupMemberNum_[ gidx ]; }
+		int groupMemberNum( int gidx ){ return groupMemberNum_[ gidx ]; }
 		
 		std::vector< int > groupMemberNum(){ return groupMemberNum_; }
 		
@@ -118,7 +118,35 @@ class SCCcluster
 				}
 			}
 		}
-
+		
+		void computeNormal()
+		{
+			pcl::PointCloud< pcl::PointXYZ >::Ptr cloud( new pcl::PointCloud< pcl::PointXYZ > );
+			cloud->clear();
+			cloud->resize( mean_.rows() );
+			for( int i = 0; i < mean_.rows(); i++ )
+			{
+				cloud->points[ i ].x = std::isnan( mean_( i, 3 ) ) ? 0 : mean_( i , 3 );
+				cloud->points[ i ].y = std::isnan( mean_( i, 4 ) ) ? 0 : mean_( i , 4 );
+				cloud->points[ i ].z = std::isnan( mean_( i, 5 ) ) ? 0 : mean_( i , 5 );
+			}
+			pcl::NormalEstimationOMP< pcl::PointXYZ, pcl::Normal > ne;
+			pcl::KdTreeFLANN< pcl::PointXYZ > tree;
+			tree.setInputCloud( cloud );
+			std::vector< int > search_indices( 3 );
+			std::vector< float > distances( 3 );
+			float curvature;
+			for( int i = 0; i < mean_.rows(); i++ )
+			{
+				tree.nearestKSearch( cloud->points[ i ], 3, search_indices, distances );
+				ne.computePointNormal( *cloud, search_indices, mean_( i, 0 ), mean_( i, 1 ), mean_( i, 2 ), curvature );
+				if( std::isnan( mean_( i, 0 ) ) )
+				{
+					mean_( i, 0 ) = mean_( i, 1 ) = mean_( i, 2 ) = 0;
+				}
+			}
+		}
+		
 		void newCluster( int idx, Eigen::Array< float, 1, PARAM_DIM > point, int gidx = -1 )
 		{
 			mean_.conservativeResize( mean_.rows() + 1, PARAM_DIM );
@@ -155,14 +183,15 @@ class SCCcluster
 			}
 			else
 			{
-				indices.reserve( indices.size() + appendClster.member().capacity() );
 				for( int i = 0; i < appendClster.size(); i++ )
 				{
 					indices.push_back( appendClster.member( i ) );
 					group_.push_back( appendClster.group( i ) + groupMemberNum_.size() );
 				}
-				groupMemberNum_.reserve( groupMemberNum_.size() + appendClster.groupMemberNum().capacity() );
-				groupMemberNum_.insert( groupMemberNum_.end(), appendClster.groupMemberNum().begin(), appendClster.groupMemberNum().end() );
+				for( int i = 0; i < appendClster.groupNum(); i++ )
+				{
+					groupMemberNum_.push_back( appendClster.groupMemberNum( i ) );
+				}
 			}
 		}
 				
@@ -172,7 +201,7 @@ class SCCcluster
 			{
 				Rend = mean_.rows();
 			}
-			float highestidx = -1, highestsim = -1, clusterSim = -1, middleSim = -1, groupSim = -1, update = -1;
+			float highestidx = -1, highestsim = -1, clusterSim = -1, groupSim = -1, update = -1;
 			int rowN = ( Rend - Rstart );
 			int colN = ( Cend - Cstart );
 			
@@ -181,11 +210,11 @@ class SCCcluster
 				
 			Eigen::Array< float, 1, Eigen::Dynamic > oneArray = Eigen::Array< float, 1, Eigen::Dynamic >::Ones( 1, colN );
 			Eigen::Array< float, Eigen::Dynamic, Eigen::Dynamic > AllSim = ( ( Eigen::Matrix< float, Eigen::Dynamic, Eigen::Dynamic >::Ones( rowN, 1 ) * point.block( 0, Cstart, 1, colN ).matrix() ).array() - mean_.block( Rstart, Cstart, rowN, colN ) ).abs() / ( std_.block( Rstart, Cstart, rowN, colN ) * init_param_.clusterThres );
-			Eigen::Array< float, 1, Eigen::Dynamic >  tempweight;
 			int flag = -1;
 			
 			for( int cidx = Rstart; cidx < Rend; cidx++ )
 			{
+				Eigen::Array< float, 1, Eigen::Dynamic >  tempweight = init_param_.weight;
 				flag = -1;
 				for( int i = 0; i < init_param_.crispbound.size(); i++ )
 				{
@@ -202,17 +231,12 @@ class SCCcluster
 				for( int i = 0; i < init_param_.excepIdx.size(); i++ )
 				{
 					// If specified ECEPTION INDEX( excepIdx ) is zero, it computes a weighted distance from a part of parameters only
-					if( init_param_.excepIdx[ i ] >= Cstart && init_param_.excepIdx[ i ] < Cend && ( point( init_param_.excepIdx[ i ] ) == 0 || mean_( cidx, init_param_.excepIdx[ i ] ) == 0 ) )
+					if( init_param_.excepIdx[ i ] >= Cstart && init_param_.excepIdx[ i ] < Cend && ( std::isnan( point( init_param_.excepIdx[ i ] ) ) || std::isnan( mean_( cidx, init_param_.excepIdx[ i ] ) ) || point( init_param_.excepIdx[ i ] ) == 0 || mean_( cidx, init_param_.excepIdx[ i ] ) == 0 ) )
 					{
-						tempweight = ( init_param_.weight * init_param_.ignoreW ).block( 0, Cstart, 1, colN );
-						flag = 1;
-						break;
+						tempweight = tempweight * init_param_.ignoreW.row( i );
 					}
 				}
-				if( flag == -1 )
-				{
-					tempweight = init_param_.weight.block( 0, Cstart, 1, colN );
-				}
+				tempweight = tempweight.block( 0, Cstart, 1, colN );
 				clusterSim = ( ( oneArray - AllSim.row( cidx ) ) * tempweight ).sum() / tempweight.sum();
 				groupSim = ( ( oneArray - AllSim.row( cidx ) / init_param_.factor ) * tempweight ).sum() / tempweight.sum();
 				if( groupSim > 0 && groupSim > highestsim )
@@ -232,38 +256,32 @@ class SCCcluster
 		{
 			Eigen::Array< float, 1, PARAM_DIM > n_mean;
 			Eigen::Array< float, 1, PARAM_DIM > n_std;
-			Eigen::Array< float, 1, PARAM_DIM > remainIdx = Eigen::Array< float, 1, PARAM_DIM >::Ones() - init_param_.ignoreW;
+			Eigen::Array< float, 1, PARAM_DIM > tempweight = Eigen::Array< float, 1, PARAM_DIM >::Ones();
 			
 			int flag = -1;
 			// Because of ECEPTION INDEX( excepIdx ), we update mean & std partly
+			Eigen::Array< float, 1, PARAM_DIM > point_t;
 			for( int i = 0; i < init_param_.excepIdx.size(); i++ )
 			{
 				// If specified ECEPTION INDEX( excepIdx ) is zero, it computes a weighted distance from a part of parameters only
-				if( point( init_param_.excepIdx[ i ] ) == 0 )
+				if( std::isnan( point( init_param_.excepIdx[ i ] ) ) || point( init_param_.excepIdx[ i ] ) == 0 )
 				{
-					Eigen::Array< float, 1, PARAM_DIM > point_t = ( mean_.row( cidx ) * remainIdx ) + ( point * init_param_.ignoreW );
-					n_mean = ( mean_.row( cidx ) * indices[ cidx ].size() + point_t ) /  ( indices[ cidx ].size() + 1 );
-					std_.row( cidx ) = ( ( ( std_.row( cidx ) - init_param_.std ).square() * indices[ cidx ].size() + mean_.row( cidx ).square() * indices[ cidx ].size() + point_t.square() - ( indices[ cidx ].size() + 1 ) * n_mean.square() ) / ( indices[ cidx ].size() + 1 ) ).abs().sqrt() + init_param_.std;
-					mean_.row( cidx ) = n_mean;
-					flag = 1;
-					break;
-				}
-				else if( mean_( cidx, init_param_.excepIdx[ i ] ) == 0 )
-				{
-					// If exception occured to cluster but not to input point, we use point value to set new cluster value
-					n_mean = ( point * remainIdx ) + ( ( ( mean_.row( cidx ) * indices[ cidx ].size() + point ) / ( indices[ cidx ].size() + 1 ) ) * init_param_.ignoreW );
-					std_.row( cidx ) = ( ( ( std_.row( cidx ) - init_param_.std ).square() * indices[ cidx ].size() + mean_.row( cidx ).square() * indices[ cidx ].size() + point.square() - ( indices[ cidx ].size() + 1 ) * n_mean.square() ) / ( indices[ cidx ].size() + 1 ) ).abs().sqrt() + init_param_.std;
-					mean_.row( cidx ) = n_mean;
-					flag = 1;
-					break;
+					tempweight = tempweight * init_param_.ignoreW.row( i );
 				}
 			}
-			if( flag == -1 )
+			point_t = ( mean_.row( cidx ) * ( Eigen::Array< float, 1, PARAM_DIM >::Ones() - tempweight ) ) + ( point * tempweight );
+			tempweight = Eigen::Array< float, 1, PARAM_DIM >::Ones();
+			for( int i = 0; i < init_param_.excepIdx.size(); i++ )
 			{
-				n_mean = ( mean_.row( cidx ) * indices[ cidx ].size() + point ) /  ( indices[ cidx ].size() + 1 );
-				std_.row( cidx ) = ( ( ( std_.row( cidx ) - init_param_.std ).square() * indices[ cidx ].size() + mean_.row( cidx ).square() * indices[ cidx ].size() + point.square() - ( indices[ cidx ].size() + 1 ) * n_mean.square() ) / ( indices[ cidx ].size() + 1 ) ).abs().sqrt() + init_param_.std;
-				mean_.row( cidx ) = n_mean;
+				// If specified ECEPTION INDEX( excepIdx ) is zero, it computes a weighted distance from a part of parameters only
+				if( std::isnan( mean_( cidx, init_param_.excepIdx[ i ] ) ) || mean_( cidx, init_param_.excepIdx[ i ] ) == 0 )
+				{
+					tempweight = tempweight * init_param_.ignoreW.row( i );
+				}
 			}
+			n_mean = ( point_t * ( Eigen::Array< float, 1, PARAM_DIM >::Ones() - tempweight ) ) + ( ( ( mean_.row( cidx ) * indices[ cidx ].size() + point_t ) / ( indices[ cidx ].size() + 1 ) ) * tempweight );
+			std_.row( cidx ) = ( ( ( std_.row( cidx ) - init_param_.std ).square() * indices[ cidx ].size() + mean_.row( cidx ).square() * indices[ cidx ].size() + point_t.square() - ( indices[ cidx ].size() + 1 ) * n_mean.square() ) / ( indices[ cidx ].size() + 1 ) ).abs().sqrt() + init_param_.std;
+			mean_.row( cidx ) = n_mean;
 			indices[ cidx ].push_back( idx );
 		}
 		
@@ -271,8 +289,21 @@ class SCCcluster
 		{
 			if( indices[ cluster[ idx ] ].size() == 1 )
 			{
-				indices.erase( indices.begin() + cluster( idx ) );
-				group_.erase( group_.begin() + cluster( idx ) );
+				const int cidx = cluster( idx );
+				groupMemberNum_[ group_[ cidx ] ] -= 1;
+				if( groupMemberNum_[ group_[ cidx ] ] == 0 )
+				{				
+					for( int i = 0; i < cluster.size(); i++ )
+					{
+						if( group_[ i ] > group_[ cidx ] )
+						{
+							group_[ i ] -= 1;
+						}
+					}
+					groupMemberNum_.erase( groupMemberNum_.begin() + group_[ cidx ] );
+				}
+				indices.erase( indices.begin() + cidx );
+				group_.erase( group_.begin() + cidx );
 				std_.block( cluster[ idx ], 0, std_.rows() - cluster[ idx ] - 1, PARAM_DIM) = std_.block( cluster[ idx ] + 1, 0, std_.rows() - cluster[ idx ] - 1, PARAM_DIM);
 				std_.conservativeResize( std_.rows() - 1, PARAM_DIM);
 				mean_.block( cluster[ idx ], 0, mean_.rows() - cluster[ idx ] - 1, PARAM_DIM) = mean_.block( cluster[ idx ] + 1, 0, mean_.rows() - cluster[ idx ] - 1, PARAM_DIM);
@@ -289,38 +320,24 @@ class SCCcluster
 			{
 				Eigen::Array< float, 1, PARAM_DIM > n_mean;
 				Eigen::Array< float, 1, PARAM_DIM > n_std;
-				Eigen::Array< float, 1, PARAM_DIM > remainIdx = Eigen::Array< float, 1, PARAM_DIM >::Ones() - init_param_.ignoreW;
+				Eigen::Array< float, 1, PARAM_DIM > tempweight = Eigen::Array< float, 1, PARAM_DIM >::Ones();
 				
 				int flag = -1;
+				Eigen::Array< float, 1, PARAM_DIM > point_t;
 				// Because of ECEPTION INDEX( excepIdx ), we update mean & std partly
 				for( int i = 0; i < init_param_.excepIdx.size(); i++ )
 				{
 					// If specified ECEPTION INDEX( excepIdx ) is zero, it computes a weighted distance from a part of parameters only
-					if( point( init_param_.excepIdx[ i ] ) == 0 )
+					if( std::isnan( point( init_param_.excepIdx[ i ] ) ) || point( init_param_.excepIdx[ i ] ) == 0 )
 					{
-						Eigen::Array< float, 1, PARAM_DIM > point_t = ( mean_.row( cluster[ idx ] ) * remainIdx ) + ( point * init_param_.ignoreW );
-						n_mean = ( mean_.row( cluster[ idx ] ) * indices[ cluster[ idx ] ].size() - point_t ) /  ( indices[ cluster[ idx ] ].size() - 1 );
-						std_.row( cluster[ idx ] ) = ( ( ( std_.row( cluster[ idx ] ) - init_param_.std ).square() * indices[ cluster[ idx ] ].size() + mean_.row( cluster[ idx ] ).square() * indices[ cluster[ idx ] ].size() - point.square() - ( indices[ cluster[ idx ] ].size() - 1 ) * n_mean.square() ) / ( indices[ cluster[ idx ] ].size() - 1 ) ).abs().sqrt() + init_param_.std;
-						mean_.row( cluster[ idx ] ) = n_mean;
-						flag = 1;
-						break;
-					}
-					else if( mean_( cluster[ idx ], init_param_.excepIdx[ i ] ) == 0 )
-					{
-						// If exception occured to cluster but not to input point, we use point value to set new cluster value
-						n_mean = ( mean_.row( cluster[ idx ] ) * indices[ cluster[ idx ] ].size() - point ) /  ( indices[ cluster[ idx ] ].size() - 1 );
-						std_.row( cluster[ idx ] ) = ( ( ( std_.row( cluster[ idx ] ) - init_param_.std ).square() * indices[ cluster[ idx ] ].size() + mean_.row( cluster[ idx ] ).square() * indices[ cluster[ idx ] ].size() - point.square() - ( indices[ cluster[ idx ] ].size() - 1 ) * n_mean.square() ) / ( indices[ cluster[ idx ] ].size() - 1 ) ).abs().sqrt() + init_param_.std;
-						mean_.row( cluster[ idx ] ) = n_mean;
-						flag = 1;
-						break;
+						tempweight = tempweight * init_param_.ignoreW.row( i );
 					}
 				}
-				if( flag == -1 )
-				{
-					n_mean = ( mean_.row( cluster[ idx ] ) * indices[ cluster[ idx ] ].size() + point ) /  ( indices[ cluster[ idx ] ].size() + 1 );
-					std_.row( cluster[ idx ] ) = ( ( ( std_.row( cluster[ idx ] ) - init_param_.std ).square() * indices[ cluster[ idx ] ].size() + mean_.row( cluster[ idx ] ).square() * indices[ cluster[ idx ] ].size() - point.square() - ( indices[ cluster[ idx ] ].size() - 1 ) * n_mean.square() ) / ( indices[ cluster[ idx ] ].size() - 1 ) ).abs().sqrt() + init_param_.std;
-					mean_.row( cluster[ idx ] ) = n_mean;
-				}
+				point_t = ( mean_.row( cluster[ idx ] ) * ( Eigen::Array< float, 1, PARAM_DIM >::Ones() - tempweight ) ) + ( point * tempweight );
+				n_mean = ( mean_.row( cluster[ idx ] ) * indices[ cluster[ idx ] ].size() - point_t ) /  ( indices[ cluster[ idx ] ].size() - 1 );
+				std_.row( cluster[ idx ] ) = ( ( ( std_.row( cluster[ idx ] ) - init_param_.std ).square() * indices[ cluster[ idx ] ].size() + mean_.row( cluster[ idx ] ).square() * indices[ cluster[ idx ] ].size() - point.square() - ( indices[ cluster[ idx ] ].size() - 1 ) * n_mean.square() ) / ( indices[ cluster[ idx ] ].size() - 1 ) ).abs().sqrt() + init_param_.std;
+				mean_.row( cluster[ idx ] ) = n_mean;
+				
 				for( int i = 0; i < indices[ cluster[ idx ] ].size(); i++ )
 				{
 					if( indices[ cluster[ idx ] ][ i ] == idx )
