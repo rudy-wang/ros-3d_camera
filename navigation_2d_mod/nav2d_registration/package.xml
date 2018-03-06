@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<package>
+  <name>nav2d_registration</name>
+  <version>0.3.0</version>
+  <description>
+    This package holds a registration strategie for the RobotNavigator.
+  </description>
+
+  <maintainer email="rudycf2001@gmail.com">Rudy Wang</maintainer>
+  <author email="rudycf2001@gmail.com">Rudy Wang</author>
+  <!-- origin template from 
+  <maintainer email="sebastian.kasperski@dfki.de">Sebastian Kasperski</maintainer>
+  <url type="website">http://wiki.ros.org/robot_operator</url>
+  <author email="sebastian.kasperski@dfki.de">Sebastian Kasperski</author>
+   -->
+  <license>GPLv3</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+  <build_depend>tf</build_depend>
+  <build_depend>pluginlib</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
+  <build_depend>visualization_msgs</build_depend>
+  <build_depend>message_runtime</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>tf</run_depend>
+  <run_depend>pluginlib</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>nav_msgs</run_depend>
+  <run_depend>visualization_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+
+</package>
