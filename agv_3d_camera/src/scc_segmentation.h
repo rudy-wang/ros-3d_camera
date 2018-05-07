@@ -1,5 +1,10 @@
-#include "scc.h"
+#include "system_base.h"
+#include "cv_imgproc.h"
+#include "ros_msg.h"
+#include "pcl_base.h"
+#include "pcl_imgproc.h"
 #include "input_data.h"
+#include "scc.h"
 
 #define ROUGH 0
 #define REFINE 1
@@ -43,6 +48,7 @@ void assignCluster( SCCcluster< PARAM_DIM > &clstrHdlr, Eigen::Array< float, Eig
 template< int PARAM_DIM >
 void rgbdSCC( pointXYZC &input, InitSetting< PARAM_DIM > iniSet, InitSetting< PARAM_DIM > iniSet2 )
 {
+	/*
 	SCCcluster< PARAM_DIM > CclusterHdler( iniSet );	
 	SCCcluster< PARAM_DIM > GclusterHdler( iniSet2 );
 	SCCparallel( CclusterHdler, input.point(), input.Ccluster, 6, 11, 4, ROUGH );
@@ -64,8 +70,9 @@ void rgbdSCC( pointXYZC &input, InitSetting< PARAM_DIM > iniSet, InitSetting< PA
 	std::cout << "clustering done" << std::endl;
 	std::cout << GclusterHdler.size() << "___" << GclusterHdler.groupNum() << std::endl;
 	input.showCluster( GclusterHdler, GEO_ );
+	*/
 	//std::cout << GclusterHdler.size() << std::endl;
-	//input.showImg();
+	input.showImg();
 	//input.showFuseImg( int( CclusterHdler.size() ), COLOR_ );
 	//input.showFuseImg( int( GclusterHdler.size() ), GEO_ );
 }

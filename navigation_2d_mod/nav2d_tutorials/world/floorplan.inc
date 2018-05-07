@@ -13,6 +13,6 @@ define floorplan model
 
 	gripper_return 0
 	fiducial_return 0
-	laser_return 1
 	ranger_return 140
+	laser_return 1
 )

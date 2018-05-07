@@ -39,7 +39,7 @@ else()
               /usr/include/GL
               /usr/include
     )
-    # Find glfw header
+    # Find OPENCV header
     find_path(OPENCV_INCLUDE_DIR NAMES opencv2/cvv.hpp opencv2/opencv.hpp opencv/cv.h
         PATHS /usr/X11R6/include
 		      /opt/ros/kinetic/include/
@@ -72,7 +72,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp 
   image_transport
   std_msgs
-  cob_3d_segmentation
+  #cob_3d_segmentation
   sensor_msgs
   message_generation
 )
@@ -117,11 +117,11 @@ find_package(catkin REQUIRED COMPONENTS
  )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
+ add_service_files(
+   FILES
+   checkElevator.srv
 #   Service2.srv
-# )
+ )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -201,6 +201,8 @@ include_directories(
 add_executable(sensor_pub src/sensor_pub.cpp)
 add_executable(sensor_sub src/sensor_sub.cpp)
 add_executable(scc_segmentation src/scc_segmentation.cpp)
+add_executable(checkElevator_server src/checkElevator_server.cpp)
+add_executable(checkElevator_client src/checkElevator_client.cpp)
 add_executable(tutorial_fast_segmentation src/tutorial_fast_segmentation.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -220,6 +222,8 @@ add_executable(tutorial_fast_segmentation src/tutorial_fast_segmentation.cpp)
 target_link_libraries(sensor_pub ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(sensor_sub ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(scc_segmentation ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
+target_link_libraries(checkElevator_server ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
+target_link_libraries(checkElevator_client ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 target_link_libraries(tutorial_fast_segmentation ${catkin_LIBRARIES} ${DEPENDENCIES} ${OpenCV_LIBS})
 #############
 ## Install ##
@@ -260,6 +264,8 @@ install(
     sensor_pub
     sensor_sub
 	scc_segmentation
+	checkElevator_server
+	checkElevator_client
 	tutorial_fast_segmentation
 	
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}

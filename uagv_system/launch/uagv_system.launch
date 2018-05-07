@@ -1,0 +1,6 @@
+<launch>
+
+  <node pkg="uagv_system" type="machine_node" name="MachineNode" output="screen">
+  </node>
+
+</launch>

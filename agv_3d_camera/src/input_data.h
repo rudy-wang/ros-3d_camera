@@ -1,8 +1,13 @@
+#include "cv_imgproc.h"
+#include <omp.h>
+
 #define COLOR_  1
 #define GEO_  2
 #define POINT 1
 #define MEAN 2
 
+#ifndef MOUSECB
+#define MOUSECB
 cv::Point mousePos( -1, -1 );
 
 void onMouse( int event, int x, int y, int flags, void *param )
@@ -13,6 +18,8 @@ void onMouse( int event, int x, int y, int flags, void *param )
 		mousePos.y = y;
 	}
 }
+#endif
+
 class pointXYZC
 {
 	public:
@@ -20,6 +27,7 @@ class pointXYZC
 		Eigen::Array< int, Eigen::Dynamic, 1 > Gcluster;
 		
 		/*******Constructor*******/
+		pointXYZC(){}
 		pointXYZC( int w, int h )
 		{
 			w_ = w;
@@ -31,11 +39,21 @@ class pointXYZC
 		}
 		
 		/*******Methods*******/
+		int dim(){ return point_.cols(); }
+		
 		int size(){ return size_; }
+		
+		int w(){ return w_; }
+		
+		int h(){ return h_; }
 		
 		Eigen::Array< float, Eigen::Dynamic, 11, Eigen::RowMajor > point(){ return point_; }
 		
-		Eigen::Array< float, 1, 11 > point( int idx ){	return point_.row( idx ); }
+		Eigen::Array< float, 1, 11 > point( int idx ){ return point_.row( idx ); }
+		
+		float point( int idx, int cidx ){ return point_( idx, cidx ); }
+		
+		void editPoint( int idx, int pidx, float value ){ point_( idx, pidx ) = value; }
 		
 		void SegImgMsg2XYZYUV( agv_3d_camera::SegImgConstPtr& msg )
 		{
@@ -112,7 +130,7 @@ class pointXYZC
 			cv::imshow("original", output );
 			cv::waitKey(1);
 		}
-		void showImg()
+		void showImg( int stream = 1, int trigger = 0 )
 		{
 			cv::Mat output( h_, w_, CV_8UC3 );
 			for( int i = 0; i < size_; i++ )
@@ -120,59 +138,16 @@ class pointXYZC
 				output.data[ i * 3 ] = ( uchar )point_( i , 8 );
 				output.data[ i * 3 + 1 ] = ( uchar )point_( i , 7 );
 				output.data[ i * 3 + 2 ] = ( uchar )point_( i , 6 );
-			}
-			cv:cvtColor( output, output, CV_YUV2BGR );
-			cv::imshow("original", output );
-			cv::waitKey(1);
-		}
-		
-		void showCluster( SCCcluster< 11 > cluster, int ctype )
-		{
-			cv::Mat output( h_, w_, CV_8UC3 );
-			cv::Mat buff( h_, w_, CV_8UC3 );
-			cv::Mat cannyOut( h_, w_, CV_8UC1 );
-			for( int pidx = 0; pidx < size_; pidx++ )
-			{
-				if( ctype == COLOR_ )
+				if( trigger == 1 )
 				{
-					output.data[ pidx * 3 ] = ceil( cluster.mean( Ccluster( pidx ), 8 ) );//( uchar )floor(255*(float( Ccluster( pidx ) + 1 ) / size ));
-					output.data[ pidx * 3 + 1 ] = ceil( cluster.mean( Ccluster( pidx ), 7 ) );//( uchar )floor(255*(float( Ccluster( pidx ) + 1 ) / size ));
-					output.data[ pidx * 3 + 2 ] = ceil( cluster.mean( Ccluster( pidx ), 6 ) );//( uchar )floor(255*(float( Ccluster( pidx ) + 1 ) / size ));
-				}
-				else if( ctype == GEO_ )
-				{
-					output.data[ pidx * 3 ] = ( uchar )floor(255*(float( cluster.group( Gcluster( pidx ) ) + 1 ) / cluster.groupNum() ) );
-					output.data[ pidx * 3 + 1 ] = ( uchar )floor(255*(float( cluster.group( Gcluster( pidx ) ) + 1 ) / cluster.groupNum() ) );
-					output.data[ pidx * 3 + 2 ] = ( uchar )floor(255*(float( cluster.group( Gcluster( pidx ) ) + 1 ) / cluster.groupNum() ) );
+					if( ( i + 1 ) % w_ == 0 || i % w_ == 0 || i < w_ || i >= w_ * ( h_ - 1 ) )
+					{
+						output.data[ i * 3 + 2 ] = 255;
+						output.data[ i * 3 + 1 ] = 255;
+						output.data[ i * 3 ] = 0;
+					}
 				}
 			}
-
-			cvtColor( output, cannyOut, CV_BGR2GRAY );
-			cv::Canny( cannyOut, cannyOut, 1, 1, 7 );
-			buff = cv::Scalar::all( 0 );
-			buff.copyTo( output, cannyOut );
-			/*
-			for( int pidx = 0; pidx < size_; pidx++ )
-			{
-				if( pidx%20 == 10 && (pidx/640)%20 == 10 )
-				{
-					std::stringstream ss;
-					int k = Gcluster( pidx ) + 1;
-					ss << k;
-					cv::putText( output, ss.str(), cv::Point(round(point_(pidx,9)), round(point_(pidx,10))), 0, 0.3, cv::Scalar(0,0,255) );
-					cv::circle( output, cv::Point(round(point_(pidx,9)), round(point_(pidx,10))), 2, cv::Scalar(0,0,255) );
-				}
-			}
-			*/
-			/*
-			for(int i=0;i<cluster.size();i++)
-			{
-				std::stringstream ss;
-				ss << i;
-				cv::putText( output, ss.str(), cv::Point(round(cluster.mean(i,9)), round(cluster.mean(i,10))), 0, 0.3, cv::Scalar(0,0,255) );
-				cv::circle( output, cv::Point(round(cluster.mean(i,9)), round(cluster.mean(i,10))), 2, cv::Scalar(0,0,255) );
-			}
-			*/
 			cv::Mat output2; 
 			output.copyTo( output2 );
 			while( true )
@@ -181,30 +156,25 @@ class pointXYZC
 				if( mousePos.x > 0 && mousePos.y > 0 )
 				{
 					std::stringstream ss;
-					std::stringstream ss2;
-					for( int i = 0; i < 11; i++ )
-					{
-						if( i < 6 )
-						{
-							ss << cluster.mean( Gcluster( mousePos.y * w_ + mousePos.x ), i );
-							ss << "   ";
-						}
-						else
-						{
-							ss2 << cluster.mean( Gcluster( mousePos.y * w_ + mousePos.x ), i );
-							ss2 << "   ";
-						}
-					}
+					ss << point_.block( mousePos.x + mousePos.y * w_, 3, 1, 3 );
 					cv::Point pos( mousePos.x, mousePos.y);
-					if( pos.x > 260 )
-						pos.x = 260;
+					if( pos.x > 510 )
+						pos.x = 510;
 					cv::putText( output, ss.str(), cv::Point(pos.x, pos.y-8), 0, 0.3, cv::Scalar(0,0,255) );
-					cv::putText( output, ss2.str(), pos, 0, 0.3, cv::Scalar(0,0,255) );
 				}
 				cv::imshow( "original", output);
 				cv::setMouseCallback( "original", onMouse, NULL );
-				if( cv::waitKey( 1 ) == 27 )
+				//if( cv::waitKey( 1 ) == 27 )
+				if( stream == 1 )
+				{
+					cv::waitKey( 1 );
 					break;
+				}
+				else if( stream == 0 )
+				{
+					cv::waitKey( 0 );
+					break;
+				}
 			}
 		}
 		

@@ -1,16 +1,16 @@
 #define DETEC_INTENSITY	130			//  filter out noises having lower intensities than this threshold.
-#define CARGO_LENGTH		120			//  the length of cargo's single side.
-#define UNDER_ROTATE		3				// rotate angle per step when adjusting viewpoint under a cargo.
-#define UAGV_LENGTH		100			//  the length of UAGV's single side.
+#define CARGO_LENGTH		1.05			//  the length of cargo's single side.
+#define UNDER_ROTATE		15				// rotate angle per step when adjusting viewpoint under a cargo.
+#define UAGV_LENGTH		0.6			//  the length of UAGV's single side.
 #define DETEC_RANGE		5				//  filter out noises having higher ranges than this threshold.
 #define ANG_RANGE	 		180			//  LIDAR's range of vision angle.
-#define ANG_INC	 			(1/3)			//  LIDAR's increment of vision angle.
+#define ANG_INC	 			3				//  LIDAR's index increment per vision angle.
 #define STAT_RAN				0.03			//  define UAGV is under a static motion when its moving range lower than this threshold.
 #define STAT_ORN				3				//  define UAGV is under a static motion when its moving oriention lower than this threshold.
-#define PT_PER_M				10				//  filter out noisy clusters having less points than this threshold.
+#define PT_PER_M				7				//  filter out noisy clusters having less points than this threshold.
 #define ANG_DIFF				1.2			// a new cluster will be created if the angles between points are wider than this threshold.
-#define RAN_DIFF				0.03			// a new cluster will be created if the ranges between points are further than this threshold.
-#define THRES					190			// points are detected as reflection plate when their intensities are higher than this threshold.
+#define RAN_DIFF				0.3			// a new cluster will be created if the ranges between points are further than this threshold.
+#define THRES					230			// points are detected as reflection plate when their intensities are higher than this threshold.
 #define PI							3.14159265		// pi is just pi
 #define REG_ST_WORKING	0
 #define REG_ST_SUCCEED	1
@@ -83,7 +83,7 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 		counter++;
 		if( refClstr.size() == 0 )
 		{
-			if( counter % 10 == 1 )
+			if( counter % 10 == 0 )
 			{
 				counter += 5;
 				rotateAngle = 0;
@@ -93,12 +93,10 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 		}
 		else
 		{
-			counter += 9;
 			rotateAngle = 0;
 			moveRange = 0;
-			orientation = refClstr[ 0 ].mean_angle();
-			ROS_ERROR( "CCCCCCCCC: %f________%f", refClstr[ 0 ].mean_range(), refClstr[ 0 ].mean_angle() );
-			std::cin.ignore();
+			double mangle = refClstr[ 0 ].mean_angle(), mrange = refClstr[ 0 ].mean_range();
+			orientation = mangle;
 			if( fabs( orientation ) < 5 )
 			{
 				int left = 0, right = 0;
@@ -108,12 +106,12 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 				{
 					if( refFull.intensities[ i ] > DETEC_INTENSITY )
 					{
-						double angle_diff = fabs( refClstr[ 0 ].mean_angle() - refFull.angles[ i ] );
+						double angle_diff = fabs( mangle - refFull.angles[ i ] );
 						angle_diff = ( angle_diff > 180 ? 360 - angle_diff : angle_diff );
-						double sideLen = sqrt( pow( refClstr[ 0 ].mean_range(), 2 ) + pow( refFull.ranges[ i ], 2 ) - 2 * refClstr[ 0 ].mean_range() * refFull.ranges[ i ] * cos( angle_diff * PI / 180 ) );
+						double sideLen = sqrt( pow( mrange, 2 ) + pow( refFull.ranges[ i ], 2 ) - 2 * mrange * refFull.ranges[ i ] * cos( angle_diff * PI / 180 ) );
 						if( sideLen < CARGO_LENGTH )
 						{
-							if( refClstr[ 0 ].mean_angle() - refFull.angles[ i ] > 0 )
+							if( mangle - refFull.angles[ i ] > 0 )
 							{
 								#pragma omp atomic
 								right++;
@@ -127,10 +125,9 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 					}
 				}
 				rotateAngle = ( right > left ? 60 : -60 );
-				moveRange = refClstr[ 0 ].mean_range() / 2;
+				moveRange = mrange / 2;
 				orientation = rotateAngle + ( right > left ? -120 : 120 );
 			}
-			ROS_ERROR( "CCCCCCCCC: %f", orientation );
 		}
 		return false;
 	}
@@ -141,7 +138,7 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 	}
 }
 
-bool centerCheck( std::vector< LaserMsgLite > &refClstr, LaserMsgLite &surrRef, double &moveRange, double &rotateAngle, double &orientation, int &counter )
+bool centerCheck( std::vector< LaserMsgLite > &refClstr, LaserMsgLite &surrRef, double &moveRange, double &rotateAngle, double &orientation, int &surrcounter, int &failcounter )
 {
 	if( refClstr.size() == 2 )
 	{
@@ -149,7 +146,7 @@ bool centerCheck( std::vector< LaserMsgLite > &refClstr, LaserMsgLite &surrRef, 
 		int widestIdx;
 		double nearest = 99999;
 		double widest = 0;
-		double a = 0, b = 0, c = 0, h = 0, temp = 0;
+		double a = 0, b = 0, na = 0, wa = 0, c = 0, h = 0, temp = 0;
 		rotateAngle = 0;
 		moveRange = 0;
 		orientation = 0;
@@ -162,37 +159,43 @@ bool centerCheck( std::vector< LaserMsgLite > &refClstr, LaserMsgLite &surrRef, 
 				nearestIdx = i;
 			}
 		}
-		for( int i = 0; i < refClstr.size(); i++ )
-		{
-			temp = refClstr[ i ].mean_angle() - refClstr[ nearestIdx ].mean_angle();
-			if( fabs( temp ) > fabs( widest ) )
-			{
-				widest = temp;
-				widestIdx = i;
-			}
-		}
+		na = refClstr[ nearestIdx ].mean_angle();
+		widestIdx = ( nearestIdx == 0 ? 1 : 0);
+		wa = refClstr[ widestIdx ].mean_angle();
+		widest = fabs( wa - na );
 		a = refClstr[ widestIdx ].mean_range();
 		b = refClstr[ nearestIdx ].mean_range();
-		c = calcEucDistance( refClstr[ widestIdx ].mean_range(), refClstr[ widestIdx ].mean_angle(), refClstr[ nearestIdx ].mean_range(), refClstr[ nearestIdx ].mean_angle() );
-		h = ( a * b * fabs( widest ) ) / c;
+		c = calcEucDistance( a, wa, b, na );
+		h = ( a * b * sin( widest * ( PI / 180 ) ) ) / c;
 		surrRef.ranges.push_back( h );
-		if( refClstr[ widestIdx ].mean_angle() > refClstr[ nearestIdx ].mean_angle() )
+		if( wa > na )
 		{
-			surrRef.angles.push_back( acos( h / refClstr[ widestIdx ].mean_range() ) * ( 180 / PI ) );
+			surrRef.angles.push_back( wa - acos( h / a ) * ( 180 / PI ) );
 		}
 		else
 		{
-			surrRef.angles.push_back( acos( h / refClstr[ nearestIdx ].mean_range() ) * ( 180 / PI ) );
+			surrRef.angles.push_back( na - acos( h / b ) * ( 180 / PI ) );
 		}
-		counter++;
+		surrcounter++;
+		failcounter = 0;
 		orientation = 90;
 		return true;
 	}
-	else if( refClstr.size() == 1 || refClstr.size() == 3 )
+	else
 	{
+		failcounter++;
 		moveRange = 0;
 		rotateAngle = 0;
-		orientation = UNDER_ROTATE;
+		orientation = 0;
+		if( failcounter % 10 == 0 )
+		{
+			surrRef.ranges.clear();
+			surrRef.angles.clear();
+			surrcounter = 0;
+			moveRange = 0;
+			rotateAngle = 0;
+			orientation = UNDER_ROTATE;
+		}
 		return false;
 	}
 }
@@ -242,7 +245,7 @@ bool obstacleCheck( LaserMsgLite &refFull, double refR, double refA, double radi
 void outsideMove( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, std::vector< std::vector< double > > &sideLen, double &moveRange, double &rotateAngle, double &orientation, int &action, int &status, int &counter )
 {
 	int nearestIdx, widestIdx, longestIdx1, longestIdx2;
-	double a = 0, b = 0, c = 0, widest = 0;
+	double a = 0, b = 0, c = 0, widest = 0, mrange1 = 0, mrange2 = 0, mangle1 = 0, mangle2 = 0;
 	rotateAngle = 0;
 	moveRange = 0;
 	counter = 0;
@@ -250,13 +253,15 @@ void outsideMove( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, 
 	{
 		nearestIdx = ( refClstr[ 1 ].mean_range() > refClstr[ 0 ].mean_range() ? 0 : 1 );
 		widestIdx = ( nearestIdx == 0 ? 1 : 0 );
-		widest = refClstr[ widestIdx ].mean_angle() - refClstr[ nearestIdx ].mean_angle();
+		mangle1 =  refClstr[ widestIdx ].mean_angle();
+		mangle2 = refClstr[ nearestIdx ].mean_angle();
+		widest = mangle1 - mangle2;
 		a = refClstr[ widestIdx ].mean_range();
 		b = refClstr[ nearestIdx ].mean_range();
 		c = sideLen[ widestIdx ][ nearestIdx ];
 		rotateAngle = acos( ( a - b * cos( fabs( widest ) * ( PI / 180 ) ) ) / c ) * ( 180 / PI );
 		moveRange = fabs( a * cos( rotateAngle * ( PI / 180 ) ) - 0.5 * c );
-		rotateAngle = refClstr[ nearestIdx ].mean_angle() + widest + ( widest < 0 ?  -1 * rotateAngle : rotateAngle );
+		rotateAngle = mangle2 + widest + ( widest < 0 ?  -1 * rotateAngle : rotateAngle );
 		orientation = rotateAngle + ( widest < 0 ?  90 : -90 );
 		/* //Is this neccesary? If reference object number is 2, UAGV go straight when moving to the central line in front of objects and facing to them.
 			//If UAGV is at the central line of 2 reference object, it should see all 4 objects, or there must be obstacles.
@@ -272,18 +277,26 @@ void outsideMove( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, 
 	{
 		double centerRange = 0, centerAngle = 0, theta = 0;
 		squareCheck( refClstr, sideLen, longestIdx1, longestIdx2 );
-		theta = asin( ( refClstr[ longestIdx1 ].mean_range() / sideLen[ longestIdx1 ][ longestIdx2 ] ) * sin( fabs( refClstr[ longestIdx1 ].mean_angle() - refClstr[ longestIdx2 ].mean_angle() ) * ( PI / 180 ) ) );
-		//Target area center and navigation goal
-		centerRange = sqrt( pow( refClstr[ longestIdx2 ].mean_range(), 2 ) + 0.25 * pow( sideLen[ longestIdx1 ][ longestIdx2 ], 2 ) - sideLen[ longestIdx1 ][ longestIdx2 ] * refClstr[ longestIdx2 ].mean_range() * cos( theta ) );
-		//Relative angle for computing absolute rotateAngle
-		centerAngle = acos( ( pow( refClstr[ longestIdx2 ].mean_range(), 2 ) + pow( centerRange, 2 ) - 0.25 * pow( sideLen[ longestIdx1 ][ longestIdx2 ], 2 ) ) / ( 2 * refClstr[ longestIdx2 ].mean_range() * centerRange ) ) * ( 180 / PI );
-		if( refClstr[ longestIdx1 ].mean_angle() > refClstr[ longestIdx2 ].mean_angle() )
+		mrange1 = refClstr[ longestIdx1 ].mean_range();
+		mrange2 = refClstr[ longestIdx2 ].mean_range();
+		mangle1 = refClstr[ longestIdx1 ].mean_angle();
+		mangle2 = refClstr[ longestIdx2 ].mean_angle();
+		theta = asin( ( mrange1 / sideLen[ longestIdx1 ][ longestIdx2 ] ) * sin( fabs( mangle1 - mangle2 ) * ( PI / 180 ) ) );
+		if( cos( fabs( mangle1 - mangle2 ) * ( PI / 180 ) ) * mrange1 > mrange2 )
 		{
-			rotateAngle = refClstr[ longestIdx2 ].mean_angle() + centerAngle;
+			theta = 180 - theta;
+		}
+		//Target area center and navigation goal
+		centerRange = sqrt( pow( mrange2, 2 ) + 0.25 * pow( sideLen[ longestIdx1 ][ longestIdx2 ], 2 ) - sideLen[ longestIdx1 ][ longestIdx2 ] * mrange2 * cos( theta ) );
+		//Relative angle for computing absolute rotateAngle
+		centerAngle = acos( ( pow( mrange2, 2 ) + pow( centerRange, 2 ) - 0.25 * pow( sideLen[ longestIdx1 ][ longestIdx2 ], 2 ) ) / ( 2 * mrange2 * centerRange ) ) * ( 180 / PI );
+		if( mangle1 > mangle2 )
+		{
+			rotateAngle = mangle2 + centerAngle;
 		}
 		else
 		{
-			rotateAngle = refClstr[ longestIdx2 ].mean_angle() - centerAngle;
+			rotateAngle = mangle2 - centerAngle;
 		}
 		moveRange = centerRange;
 		double tempAngle = 180 - centerAngle - theta;
@@ -310,14 +323,14 @@ bool centerCalib( LaserMsgLite &surrRef, double &moveRange, double &rotateAngle,
 		ROS_ERROR( "Number of reference objects under cargo doesn't match the condition." );
 		return false;
 	}
-	if( fabs( surrRef.mean_angle() - 90 ) >= STAT_ORN )
+	if( fabs( surrRef.mean_angle() ) - 90 >= STAT_ORN )
 	{
 		moveRange = 0;
 		rotateAngle = 0;
-		orientation = fabs( surrRef.mean_angle() - 90 );
+		orientation = fabs( surrRef.mean_angle() ) - 90;
 		return true;
 	}
-	double mrange = 0, variant[ 4 ] = { 0, 0, 0, 0 };
+	double mrange = 0;
 	
 	mrange = surrRef.mean_range();
 	moveRange = sqrt( pow( surrRef.ranges[ 0 ] - mrange, 2 ) + pow( surrRef.ranges[ 3 ] - mrange, 2 ) );

@@ -42,7 +42,7 @@ RobotNavigator::RobotNavigator()
 	navigatorNode.param("navigation_goal_distance", mNavigationGoalDistance, 1.0);
 	navigatorNode.param("navigation_goal_angle", mNavigationGoalAngle, 1.0);
 	navigatorNode.param("exploration_goal_distance", mExplorationGoalDistance, 3.0);
-	navigatorNode.param("registration_goal_distance", mRegistrationGoalDistance, 1.0);
+	navigatorNode.param("registration_goal_distance", mRegistrationGoalDistance, 0.05);
 	navigatorNode.param("registration_goal_angle", mRegistrationGoalAngle, 0.05);
 	navigatorNode.param("navigation_homing_distance", mNavigationHomingDistance, 3.0);
 	navigatorNode.param("min_replanning_period", mMinReplanningPeriod, 3.0);
@@ -477,10 +477,6 @@ bool RobotNavigator::generateCommand()
 	
 	// Create the command message
 	nav2d_operator::cmd msg;
-	msg.Turn = -2.0 * angle / PI;
-	if(msg.Turn < -1) msg.Turn = -1;
-	if(msg.Turn >  1) msg.Turn = 1;
-	
 	if(mCurrentPlan[mStartPoint] > mNavigationHomingDistance || mStatus == NAV_ST_EXPLORING)
 		msg.Mode = 0;
 	else
@@ -491,8 +487,14 @@ bool RobotNavigator::generateCommand()
 		msg.Velocity = 1.0;
 	}else
 	{
-		msg.Velocity = 0.5 + (mCurrentPlan[mStartPoint] / 2.0);
+		msg.Velocity = 0.1 + (mCurrentPlan[mStartPoint] * 0.9);
+		//msg.Velocity = 0.5 + (mCurrentPlan[mStartPoint] / 2.0);
 	}
+	msg.Turn = -6.0 * angle / ( PI * msg.Velocity );
+	//msg.Turn = -2.0 * angle / PI;
+	if(msg.Turn < -1) msg.Turn = -1;
+	if(msg.Turn >  1) msg.Turn = 1;
+	
 	mCommandPublisher.publish(msg);
 	return true;
 }
@@ -656,16 +658,16 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	// Start navigating according to the generated plan
 	Rate loopRate(FREQUENCY);
 	unsigned int cycle = 0;
-	bool reached = false;
-	int recheckCycles = mMinReplanningPeriod * FREQUENCY, lastCLstrSize=-1, mapX, mapY;
-	double add_x = 0, add_y = 0, goal_orientation = 0;
+	bool reached = false, rightDir = true;
+	int recheckCycles = mMinReplanningPeriod * FREQUENCY, mapX, mapY, goalClstr = 0;
+	double target_x = 0, target_y = 0, goal_orientation = 0;
 	
 	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mRegistrationGoalDistance;
 	double targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
 		
 	while( task.status() == REG_ST_WORKING )
 	{
-		ROS_ERROR( "WWWWW, %d",task.laserCluster.size());
+		task.clustering();
 		// Where are we now
 		mHasNewMap = false;
 		if(!setCurrentPosition())
@@ -676,9 +678,9 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			return;
 		}
 		
-		if( task.laserCluster.size() != lastCLstrSize || ( task.action() == REG_ACT_UNDER && reached == true ) )
+		if( ( rightDir == true || ( task.action() == REG_ACT_OUTSIDE && task.laserCluster.size() > 2 ) ) && !task.roundCheck() )
 		{
-			reached = false;
+			goalClstr = task.laserCluster.size();
 			switch( task.action() )
 			{
 				//case 0:
@@ -687,21 +689,28 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 				//	break;
 				case REG_ACT_OUTSIDE:
 					//outside shelf registration;
-					task.regLiftupOutside( mCurrentDirection, add_x, add_y, goal_orientation );
+					task.regLiftupOutside( mCurrentDirection, target_x, target_y, goal_orientation );
 					break;
 				case REG_ACT_UNDER:
 					//under shelf registration;
-					task.regLiftupUnder( mCurrentDirection, add_x, add_y, goal_orientation );
+					task.regLiftupUnder( mCurrentDirection, target_x, target_y, goal_orientation );
 					break;
 				default:
 					ROS_ERROR( "Undefined registration request." );
 					break;
 			}
+			target_x = target_x + mCurrentPositionX;
+			target_y = target_y + mCurrentPositionY;
+			cycle = 0;
+			reached = false;
+			rightDir = false;
 		}
 		
 		// Check if registration is failed
 		if(task.status() == REG_ST_FAILED)
 		{
+			task.reset();
+			task.initSurrRef();
 			ROS_ERROR( "Registration failed." );
 			mRegistrationActionServer->setAborted();
 			stop();
@@ -732,19 +741,17 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 				stop();
 				return;
 			}
-			if( task.laserCluster.size() != lastCLstrSize || ( task.action() == REG_ACT_UNDER && reached == true ) )
-			{
-				mapX =  (double)(add_x + mCurrentPositionX - mCurrentMap.getOriginX()) / mCurrentMap.getResolution();
-				mapY =  (double)(add_y + mCurrentPositionY- mCurrentMap.getOriginY()) / mCurrentMap.getResolution();
-				if(mapX < 0) mapX = 0;
-				if(mapX >= (int)mCurrentMap.getWidth()) mapX = mCurrentMap.getWidth() - 1;
-				if(mapY < 0) mapY = 0;
-				if(mapY >= (int)mCurrentMap.getHeight()) mapY = mCurrentMap.getHeight() - 1;
-			}
-	
+			
+			mapX =  (double)(target_x - mCurrentMap.getOriginX()) / mCurrentMap.getResolution();
+			mapY =  (double)(target_y - mCurrentMap.getOriginY()) / mCurrentMap.getResolution();
+			if(mapX < 0) mapX = 0;
+			if(mapX >= (int)mCurrentMap.getWidth()) mapX = mCurrentMap.getWidth() - 1;
+			if(mapY < 0) mapY = 0;
+			if(mapY >= (int)mCurrentMap.getHeight()) mapY = mCurrentMap.getHeight() - 1;
+			
 			bool success = false;
 			if(mCurrentMap.getIndex(mapX, mapY, mGoalPoint)) success = createPlan();
-			
+						
 			if(!success)
 			{
 				if(correctGoalPose())
@@ -763,7 +770,6 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			WallDuration d = endTime - startTime;
 			ROS_INFO("Path planning took %.09f seconds, distance is %.2f m.", d.toSec(), mCurrentPlan[mStartPoint]);
 		}
-		lastCLstrSize = task.laserCluster.size();
 		
 		// Are we already close enough?
 		if(!reached && mCurrentPlan[mStartPoint] <= targetDistance && mCurrentPlan[mStartPoint] >= 0)
@@ -783,33 +789,33 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			ROS_INFO_THROTTLE(1.0,"Heading: %.2f / Desired: %.2f / Difference: %.2f / Tolerance: %.2f", mCurrentDirection, goal_orientation, diff, targetAngle);
 			if(diff <= targetAngle)
 			{
+				rightDir = true;
 				ROS_INFO("Final Heading: %.2f / Desired: %.2f / Difference: %.2f / Tolerance: %.2f", mCurrentDirection, goal_orientation, diff, targetAngle);
-				if( task.laserCluster.size() > 1 )
+				if( goalClstr > 1 )
 				{
-					task.reset();
-					task.initSurrRef();
 					if( task.action() == REG_ACT_OUTSIDE )
 					{
+						/* Not sure if UAGV can see reference objects in long distance, it can't see when simulating.
 						if( task.laserCluster.size() == 2 )
 						{
 							task.aborted();
 							ROS_ERROR( "Obstacles in the way of UAGV's destination." );
 							break;
-						}
-						 task.setRequest( REG_ACT_UNDER );
+						}*/
+						task.reset();
+						task.initSurrRef();
+						task.setRequest( REG_ACT_UNDER );
 						ROS_INFO("Finishing Stage1 registration. Starting Stage2.");
 					}
 					else if( task.action() == REG_ACT_UNDER && task.roundCheck() )
 					{
+						task.reset();
+						task.initSurrRef();
 						task.confirmed();
 						ROS_INFO("Finishing Stage2 registration.");
 						break;
 					}
 				}
-				else if( task.laserCluster.size() == 0 )
-				{
-					lastCLstrSize = -1;
-				}					
 			}
 			
 			nav2d_operator::cmd msg;
@@ -848,7 +854,9 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	}
 	if( task.status() == REG_ST_SUCCEED )
 	{
-	// Set ActionServer suceeded
+		// Set ActionServer suceeded
+		task.reset();
+		task.initSurrRef();
 		ROS_INFO("Goal reached. Registration succeed.");
 		nav2d_navigator::RegistrationResult r;
 		r.final_pose.x = mCurrentPositionX;
@@ -859,6 +867,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		stop();
 	}else if( task.status() == REG_ST_FAILED )
 	{
+		task.reset();
+		task.initSurrRef();
 		ROS_ERROR( "Registration failed." );
 		mRegistrationActionServer->setAborted();
 		stop();

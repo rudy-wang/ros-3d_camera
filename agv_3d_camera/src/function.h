@@ -14,10 +14,12 @@
 #include <cob_3d_features/organized_normal_estimation_omp.h>
 
 // Global data
-#define NOISY				20
+#define NOISY				3
 #define CAR_WIDTH		60
 #define WINDOW_DIM		5
 #define THRD_NUM		1
+#define CAM_ANGLE		5
+#define PI						3.14159265
 
 static const std::string OPENCV_WINDOW = "Image window";
 
@@ -84,6 +86,7 @@ int RS2PCD( rs::device *dev, std::vector<uint16_t> *l_d, agv_3d_camera::SegImg &
     
     // Single thread
     CopyNPreProc( 0, depth_image, color_image, &color_intrin, &buffer_depth, scale, l_d, pcl );
+    Depth2Color( pcl );
     /* Multi-thread
     int thrd_idx = 0;
     std::thread mthrd[ THRD_NUM ];
@@ -165,6 +168,8 @@ void CopyNPreProc( int thrd_idx, uint16_t *depth_image, uint8_t  *color_image, r
 */
    		// Convert realsense to real world coordinate
 		rs::float3 point = color_intrin->deproject( pixel, depth_image[ i ] * scale );
+		float newDepth = depth_image[ i ] * cos( CAM_ANGLE * PI / 180 ) + ( point.y / scale ) * sin( CAM_ANGLE * PI / 180 );
+		point = color_intrin->deproject( pixel, newDepth * scale );
   		*dp_x = point.x;
         *dp_y = point.y;
            
@@ -203,7 +208,7 @@ uint16_t MedianFilter( std::vector<uint16_t> *input, uint32_t target_index, uint
 		std::sort( buffer.begin(), buffer.end() );
 		return buffer[ ceil( pow( window_dim, 2 ) / 2 ) ];
 	}
-	return (*input)[ target_index ];
+	return ( *input )[ target_index ];
 }
 
 // Convert depth to color

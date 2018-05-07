@@ -7,6 +7,7 @@
 #include <vector>
 #include <future>
 #include <time.h>
+#include <omp.h>
 #include <functional>
 
 #include <librealsense/rs.hpp>

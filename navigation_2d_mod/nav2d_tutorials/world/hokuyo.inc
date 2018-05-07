@@ -4,7 +4,7 @@ define hokuyolaser ranger
 	( 			
 		# laser-specific properties
 		# factory settings for LMS200	
-		range [ 0.2  30.0 ]
+		range [ 0.0  30.0 ]
 		fov 180.0
 		samples 541
 	)

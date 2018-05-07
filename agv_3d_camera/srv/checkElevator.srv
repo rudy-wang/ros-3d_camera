@@ -1,0 +1,11 @@
+int8 action
+# 0 : Static status check.
+# 1 : Active status check.
+
+int64 map_depth
+---
+int8 status
+# -1 : Elavator status remains uncertain ( may cause by localizing error or obstacles ).
+# 0 : Obstacles are in front of elevator.
+# 1 : Elavator is open.
+# 2 : Elavator is close.

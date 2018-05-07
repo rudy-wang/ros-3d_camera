@@ -1,0 +1,6 @@
+int8 action
+float32 target_distance
+float32 target_angle
+---
+bool success   # indicate successful run of triggered service
+string message # informational, e.g. for error messages
