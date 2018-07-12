@@ -8,6 +8,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   costmap_2d
   sensor_msgs
+  nav_msgs
+  geometry_msgs
 )
 
 ################################################

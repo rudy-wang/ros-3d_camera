@@ -6,6 +6,7 @@
   
 	<!-- Start Mapper to genreate map from laser scans -->
 	<node name="Mapper" pkg="nav2d_karto" type="mapper">
+		<remap from="scan" to="base_scan"/>
 		<rosparam file="$(find nav2d_tutorials)/param/mapper.yaml"/>
 	</node>
 	
@@ -13,6 +14,7 @@
 
 	<!-- Start the Operator to control the simulated robot -->
 	<node name="Operator" pkg="nav2d_operator" type="operator" >
+		<remap from="scan" to="base_scan"/>
 		<rosparam file="$(find nav2d_tutorials)/param/operator.yaml"/>
 		<rosparam file="$(find nav2d_tutorials)/param/costmap.yaml" ns="local_map" />
 	</node>
@@ -22,9 +24,15 @@
 		<rosparam file="$(find nav2d_tutorials)/param/navigator.yaml"/>
 	</node>
 
-	<node name="GetMap" pkg="nav2d_navigator" type="get_map_client" />
-	<node name="Explore" pkg="nav2d_navigator" type="explore_client" />
-	<node name="SetGoal" pkg="nav2d_navigator" type="set_goal_client" />
+	<node name="GetMap" pkg="nav2d_navigator" type="get_map_client">
+		<remap from="cmd" to="cmd_vel"/>
+	</node>
+	<node name="Explore" pkg="nav2d_navigator" type="explore_client">
+		<remap from="cmd" to="cmd_vel"/>
+	</node>
+	<node name="SetGoal" pkg="nav2d_navigator" type="set_goal_client">
+		<remap from="cmd" to="cmd_vel"/>
+	</node>
 
 
 	<!-- <include file="$(find turtlebot3_bringup)/launch/turtlebot3_remote.launch"/> -->

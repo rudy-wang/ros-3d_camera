@@ -7,11 +7,19 @@
 #define ROUTE_TOPIC   "route"
 #define PLAN_TOPIC    "desired"
 #define LUT_RESOLUTION 100
+#define TICK2RAD      0.000628318  // 2 * 3.14159265359 / 10000 = 0.000628318f
+#define WHEEL_RADIUS  0.09
+#define WHEEL_SEPARATION 0.429
 
 #include <ros/ros.h>
 #include <costmap_2d/costmap_2d_ros.h>
 #include <sensor_msgs/PointCloud.h>
 #include <nav2d_operator/cmd.h>
+#include <nav_msgs/Odometry.h>
+#include <std_msgs/UInt32MultiArray.h>
+#include <sensor_msgs/JointState.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <tf/transform_broadcaster.h>
 
 #include <string>
 

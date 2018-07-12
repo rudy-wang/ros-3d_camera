@@ -1,26 +1,26 @@
-#define DETEC_INTENSITY	130			//  filter out noises having lower intensities than this threshold.
-#define CARGO_LENGTH		1.05			//  the length of cargo's single side.
-#define UNDER_ROTATE		15				// rotate angle per step when adjusting viewpoint under a cargo.
-#define UAGV_LENGTH		0.6			//  the length of UAGV's single side.
-#define DETEC_RANGE		5				//  filter out noises having higher ranges than this threshold.
-#define ANG_RANGE	 		180			//  LIDAR's range of vision angle.
-#define ANG_INC	 			3				//  LIDAR's index increment per vision angle.
-#define STAT_RAN				0.03			//  define UAGV is under a static motion when its moving range lower than this threshold.
-#define STAT_ORN				3				//  define UAGV is under a static motion when its moving oriention lower than this threshold.
-#define PT_PER_M				7				//  filter out noisy clusters having less points than this threshold.
-#define ANG_DIFF				1.2			// a new cluster will be created if the angles between points are wider than this threshold.
-#define RAN_DIFF				0.3			// a new cluster will be created if the ranges between points are further than this threshold.
-#define THRES					230			// points are detected as reflection plate when their intensities are higher than this threshold.
-#define PI							3.14159265		// pi is just pi
+#define DETEC_INTENSITY	130			// filter out noises having lower intensities than this threshold.
+#define CARGO_LENGTH	1.05			// the length of cargo's single side.
+#define UNDER_ROTATE	15			// rotate angle per step when adjusting viewpoint under a cargo.
+#define UAGV_LENGTH	0.62			// the length of UAGV's single side.
+#define DETEC_RANGE	5			// filter out noises having higher ranges than this threshold.
+#define ANG_RANGE	180			// LIDAR's range of vision angle.
+#define ANG_INC	 	3			// LIDAR's index increment per vision angle.
+#define STAT_RAN	0.03			// define UAGV is under a static motion when its moving range lower than this threshold.
+#define STAT_ORN	3			// define UAGV is under a static motion when its moving oriention lower than this threshold.
+#define PT_PER_M	5			// filter out noisy clusters having less points than this threshold.
+#define ANG_DIFF	1.5			// a new cluster will be created if the angles between points are wider than this threshold.
+#define RAN_DIFF	0.15			// a new cluster will be created if the ranges between points are further than this threshold.
+#define THRES		233			// points are detected as reflection plate when their intensities are higher than this threshold.
+#define PI		3.14159265		// pi is just pi
 #define REG_ST_WORKING	0
 #define REG_ST_SUCCEED	1
-#define REG_ST_FAILED		2
+#define REG_ST_FAILED	2
 #define REG_ACT_OUTSIDE	1
 #define REG_ACT_UNDER	2
 
 bool isNewCluster( double input_angle, double input_range, std::vector< LaserMsgLite > &refClstr, double thre1, double thre2 )
 {
-	return refClstr.size() == 0 ? true : ( input_angle - refClstr.back().angles.back() > thre1 || input_range - refClstr.back().mean_range() > thre2 );
+	return (refClstr.size() == 0 ? true : ( input_angle - refClstr.back().angles.back() > thre1 || input_range - refClstr.back().mean_range() > thre2 ));
 }
 
 double calcEucDistance( double refR1, double refA1, double refR2, double refA2 )
@@ -106,9 +106,7 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 				{
 					if( refFull.intensities[ i ] > DETEC_INTENSITY )
 					{
-						double angle_diff = fabs( mangle - refFull.angles[ i ] );
-						angle_diff = ( angle_diff > 180 ? 360 - angle_diff : angle_diff );
-						double sideLen = sqrt( pow( mrange, 2 ) + pow( refFull.ranges[ i ], 2 ) - 2 * mrange * refFull.ranges[ i ] * cos( angle_diff * PI / 180 ) );
+						double sideLen = calcEucDistance( mrange, mangle, refFull.ranges[ i ], refFull.angles[ i ] );
 						if( sideLen < CARGO_LENGTH )
 						{
 							if( mangle - refFull.angles[ i ] > 0 )
@@ -187,7 +185,7 @@ bool centerCheck( std::vector< LaserMsgLite > &refClstr, LaserMsgLite &surrRef, 
 		moveRange = 0;
 		rotateAngle = 0;
 		orientation = 0;
-		if( failcounter % 10 == 0 )
+		if( failcounter % 5 == 0 )
 		{
 			surrRef.ranges.clear();
 			surrRef.angles.clear();
@@ -290,22 +288,26 @@ void outsideMove( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, 
 		centerRange = sqrt( pow( mrange2, 2 ) + 0.25 * pow( sideLen[ longestIdx1 ][ longestIdx2 ], 2 ) - sideLen[ longestIdx1 ][ longestIdx2 ] * mrange2 * cos( theta ) );
 		//Relative angle for computing absolute rotateAngle
 		centerAngle = acos( ( pow( mrange2, 2 ) + pow( centerRange, 2 ) - 0.25 * pow( sideLen[ longestIdx1 ][ longestIdx2 ], 2 ) ) / ( 2 * mrange2 * centerRange ) ) * ( 180 / PI );
+		centerAngle = ( fabs( mangle1 - mangle2 ) > 180 ? -centerAngle : centerAngle );
+		double tempAngle = 180 - centerAngle - theta;
 		if( mangle1 > mangle2 )
 		{
 			rotateAngle = mangle2 + centerAngle;
+			orientation = ( tempAngle < 90 ? rotateAngle + ( tempAngle - 45 ) : rotateAngle + ( tempAngle - 135 ) );
 		}
 		else
 		{
 			rotateAngle = mangle2 - centerAngle;
+			orientation = ( tempAngle < 90 ? rotateAngle + ( 45 - tempAngle ) : rotateAngle + ( 135 - tempAngle ) );
 		}
 		moveRange = centerRange;
-		double tempAngle = 180 - centerAngle - theta;
-		orientation = ( tempAngle < 90 ? rotateAngle + ( tempAngle - 45 ) : rotateAngle + ( 135 - tempAngle ) );
-		if( obstacleCheck( refFull, moveRange, rotateAngle, 0.5 * UAGV_LENGTH * sqrt( 2 ) ) )
+		/*		
+		if( obstacleCheck( refFull, moveRange, rotateAngle, 0.5 * UAGV_LENGTH * sqrt( 2 ), 1 ) )
 		{
 			ROS_ERROR( "Obstacles in the way of UAGV's destination." );
 			status = 2;
 		}
+		*/
 	}
 	else
 	{

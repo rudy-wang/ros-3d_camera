@@ -130,12 +130,12 @@ void Registration::aborted()
 	status_ = 2;
 }
 
-void Registration::regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &goal_orientation )
+void Registration::regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &goal_orientation, double &new_angle )
 {
 	double moveRange = 0;
 	double rotateAngle = 0;
 	double orientation = 0;
-	double new_angle = 0;
+	new_angle = 0;
 	status_ = 0;
 	
 	if( failcounter >= 30 )
@@ -158,12 +158,12 @@ void Registration::regLiftupOutside( double last_orientation, double &add_x, dou
 	goal_orientation = last_orientation + orientation * ( PI / 180 );
 }
 
-void Registration::regLiftupUnder( double last_orientation, double &add_x, double &add_y, double &goal_orientation )
+void Registration::regLiftupUnder( double last_orientation, double &add_x, double &add_y, double &goal_orientation, double &new_angle )
 {
 	double moveRange = 0;
 	double rotateAngle = 0;
 	double orientation = 0;
-	double new_angle = 0;
+	new_angle = 0;
 	status_ = 0;
 	
 	if( centerCheck( laserCluster, surrRef, moveRange, rotateAngle, orientation, surcounter, failcounter ) )
@@ -181,7 +181,7 @@ void Registration::regLiftupUnder( double last_orientation, double &add_x, doubl
 			}
 		}
 	}
-	if( failcounter > 900 / UNDER_ROTATE ) // 90 degrees * waiting counter (default: 10) for slight turning in function "centerCheck"
+	if( failcounter > 450 / UNDER_ROTATE ) // 90 degrees * waiting counter (default: 5) for slight turning in function "centerCheck"
 	{
 		reset();
 		initSurrRef();
@@ -194,9 +194,9 @@ void Registration::regLiftupUnder( double last_orientation, double &add_x, doubl
 	goal_orientation = last_orientation + orientation * ( PI / 180 );
 }
 
-void Registration::laser_cb( const sensor_msgs::LaserScan& input_msg )
+void Registration::laser_cb( const sensor_msgs::LaserScan::ConstPtr& input_msg )
 {
-	msg = input_msg;
+	msg = *input_msg;
 }
 
 void Registration::clustering()
@@ -210,18 +210,17 @@ void Registration::clustering()
 	for( int i = 0; i < size; i++ )
 	{
 		double tempAngle = ( i + 0.5 - double( size ) / 2 ) / ANG_INC;
-		
 		if( msg.intensities[ i ] > THRES && msg.ranges[ i ] < DETEC_RANGE && tempAngle >= -ANG_RANGE / 2 && tempAngle <= ANG_RANGE / 2 )
 		{
 			if( isNewCluster( tempAngle, msg.ranges[ i ], laserCluster, ANG_DIFF, RAN_DIFF ) )
 			{
 				if( laserCluster.size() > 0 && laserCluster.back().angles.size() < ceil( ( 1 / laserCluster.back().mean_range() ) * PT_PER_M ) )
-				{/*
+				{
 					laserCluster.erase( laserCluster.end() );
 					if( isNewCluster( tempAngle, msg.ranges[ i ], laserCluster, ANG_DIFF, RAN_DIFF ) )
 					{
 						laserCluster.push_back( LaserMsgLite( -ANG_RANGE / 2, ANG_RANGE / 2, 1 / ANG_INC ) );
-					}*/
+					}
 				}
 				else
 				{
@@ -241,11 +240,11 @@ void Registration::clustering()
 	}
 	
 	if( laserCluster.size() > 0 )
-	{/*
+	{
 		if( laserCluster.back().angles.size() < ceil( ( 1 / laserCluster.back().mean_range() ) * PT_PER_M ) )
 		{
 			laserCluster.erase( laserCluster.end() );
 		}
-		meanDepth = meanDepth / thresCount;*/
+		meanDepth = meanDepth / thresCount;
 	}
 }

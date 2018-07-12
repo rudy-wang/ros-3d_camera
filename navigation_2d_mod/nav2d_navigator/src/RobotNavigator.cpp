@@ -13,7 +13,7 @@
 #ifndef PI
 	#define PI 3.14159265	
 #endif
-#define FREQUENCY 5.0
+#define FREQUENCY 1.5
 
 using namespace ros;
 using namespace tf;
@@ -43,7 +43,7 @@ RobotNavigator::RobotNavigator()
 	navigatorNode.param("navigation_goal_angle", mNavigationGoalAngle, 1.0);
 	navigatorNode.param("exploration_goal_distance", mExplorationGoalDistance, 3.0);
 	navigatorNode.param("registration_goal_distance", mRegistrationGoalDistance, 0.05);
-	navigatorNode.param("registration_goal_angle", mRegistrationGoalAngle, 0.05);
+	navigatorNode.param("registration_goal_angle", mRegistrationGoalAngle, 0.1);
 	navigatorNode.param("navigation_homing_distance", mNavigationHomingDistance, 3.0);
 	navigatorNode.param("min_replanning_period", mMinReplanningPeriod, 3.0);
 	navigatorNode.param("max_replanning_period", mMaxReplanningPeriod, 1.0);
@@ -52,7 +52,9 @@ RobotNavigator::RobotNavigator()
 
 	robotNode.param("map_frame", mMapFrame, std::string("map"));
 	robotNode.param("robot_frame", mRobotFrame, std::string("robot"));
+	robotNode.param("laser_frame", mLaserFrame, std::string("laser_link"));
 	robotNode.param("robot_id", mRobotID, 1);
+	robotNode.param("laser_topic", mLaserTopic, std::string("scan"));
 	robotNode.param("move_action_topic", mMoveActionTopic, std::string(NAV_MOVE_ACTION));
 	robotNode.param("explore_action_topic", mExploreActionTopic, std::string(NAV_EXPLORE_ACTION));
 	robotNode.param("registration_action_topic", mRegistrationActionTopic, std::string(NAV_REGISTRATION_ACTION));
@@ -151,6 +153,7 @@ bool RobotNavigator::getMap()
 
 bool RobotNavigator::receiveStop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
+	ROS_ERROR("%f", asin(-0.2));
 	mIsStopped = true;
 	res.success = true;
 	res.message = "Navigator received stop signal.";
@@ -244,8 +247,7 @@ bool RobotNavigator::createPlan()
 	{
 		mCurrentPlan[i] = -1;
 	}
-
-	if(mCurrentMap.isFree(mGoalPoint))
+	if(mCurrentMap.isFree(mGoalPoint) || mStatus == NAV_ST_REGISTRATION )
 	{
 		queue.insert(Entry(0.0, mGoalPoint));
 		mCurrentPlan[mGoalPoint] = 0;
@@ -278,7 +280,7 @@ bool RobotNavigator::createPlan()
 		
 		if(mCurrentPlan[index] >= 0 && mCurrentPlan[index] < distance) continue;
 		
-//		if(index == mStartPoint) break;
+		//if(index == mStartPoint) break;
 		
 		// Add all adjacent cells
 		if(!mCurrentMap.getCoordinates(x, y, index)) continue;
@@ -308,7 +310,7 @@ bool RobotNavigator::createPlan()
 		}
 	}
 	
-	if(mCurrentPlan[mStartPoint] < 0)
+	if(mCurrentPlan[mStartPoint] < 0 && mStatus != NAV_ST_REGISTRATION)
 	{
 		ROS_ERROR("No way between robot and goal!");
 		return false;
@@ -341,15 +343,34 @@ void RobotNavigator::publishPlan()
 		if(mCurrentPlan[index] == 0) break;
 		
 		unsigned int next_index = index;
+		unsigned int lastIndex;
 		
-		std::vector<unsigned int> neighbors = mCurrentMap.getFreeNeighbors(index);
+		std::vector<unsigned int> neighbors;
+		if(mStatus == NAV_ST_REGISTRATION){
+			neighbors.push_back(index - 1);
+			neighbors.push_back(index + 1);
+			neighbors.push_back(index - mCurrentMap.getWidth());
+			neighbors.push_back(index + mCurrentMap.getWidth());
+			neighbors.push_back(index - mCurrentMap.getWidth() - 1);
+			neighbors.push_back(index - mCurrentMap.getWidth() + 1);
+			neighbors.push_back(index + mCurrentMap.getWidth() - 1);
+			neighbors.push_back(index + mCurrentMap.getWidth() + 1);
+		}else{
+			neighbors = mCurrentMap.getFreeNeighbors(index);
+		}
 		for(unsigned int i = 0; i < neighbors.size(); i++)
 		{
-			if(mCurrentPlan[neighbors[i]] >= 0 && mCurrentPlan[neighbors[i]] < mCurrentPlan[next_index])
-				next_index = neighbors[i];
+			if(mCurrentPlan[neighbors[i]] >= 0 && mCurrentPlan[neighbors[i]] < (mStatus == NAV_ST_REGISTRATION && next_index == index && next_index != mGoalPoint ? mCurrentPlan[next_index] + 999 : mCurrentPlan[next_index]))
+			{
+				if (neighbors[i] == mGoalPoint || lastIndex != neighbors[i] || mStatus != NAV_ST_REGISTRATION)
+				{
+					next_index = neighbors[i];
+				}
+			}
 		}
 		
 		if(index == next_index) break;
+		lastIndex = index;
 		index = next_index;
 	}
 	
@@ -434,7 +455,7 @@ bool RobotNavigator::generateCommand()
 		return true;
 	}
 	
-	if(mStatus != NAV_ST_NAVIGATING && mStatus != NAV_ST_EXPLORING)
+	if(mStatus != NAV_ST_NAVIGATING && mStatus != NAV_ST_EXPLORING && mStatus != NAV_ST_REGISTRATION)
 	{
 		ROS_WARN_THROTTLE(1.0, "Navigator has status %d when generateCommand() was called!", mStatus);
 		return false;
@@ -452,13 +473,21 @@ bool RobotNavigator::generateCommand()
 	int steps = 1.0 / mCurrentMap.getResolution();
 	for(int i = 0; i < steps; i++)
 	{
-		unsigned int bestPoint = target;	
-		std::vector<unsigned int> neighbors = mCurrentMap.getFreeNeighbors(target);
+		unsigned int bestPoint = target;
+		std::vector<unsigned int> neighbors;
+		if(mStatus == NAV_ST_REGISTRATION){
+			target = mGoalPoint;
+			break;
+		}
+		neighbors = mCurrentMap.getFreeNeighbors(target);
+
 		for(unsigned int i = 0; i < neighbors.size(); i++)
 		{
 			if(mCurrentPlan[neighbors[i]] >= (unsigned int)0 && mCurrentPlan[neighbors[i]] < mCurrentPlan[bestPoint])
+			{
 				bestPoint = neighbors[i];
-		}	
+			}
+		}
 		target = bestPoint;
 	}
 	
@@ -470,15 +499,21 @@ bool RobotNavigator::generateCommand()
 		return false;
 	}
 	double map_angle = atan2((double)y - current_y, (double)x - current_x);
-	
+	ROS_ERROR("BEST: %d, %d, %d", x, y, target);
 	double angle = map_angle - mCurrentDirection;
 	if(angle < -PI) angle += 2*PI;
 	if(angle > PI) angle -= 2*PI;
 	
 	// Create the command message
 	nav2d_operator::cmd msg;
-	if(mCurrentPlan[mStartPoint] > mNavigationHomingDistance || mStatus == NAV_ST_EXPLORING)
+	msg.Turn = -2.5 * angle / PI; //2.0*
+	if(msg.Turn < -1) msg.Turn = -1;
+	if(msg.Turn >  1) msg.Turn = 1;
+	
+	if((mCurrentPlan[mStartPoint] > mNavigationHomingDistance || mStatus == NAV_ST_EXPLORING) && mStatus != NAV_ST_REGISTRATION)
 		msg.Mode = 0;
+	else if(mStatus == NAV_ST_REGISTRATION)
+		msg.Mode = 2;
 	else
 		msg.Mode = 1;
 		
@@ -487,14 +522,12 @@ bool RobotNavigator::generateCommand()
 		msg.Velocity = 1.0;
 	}else
 	{
-		msg.Velocity = 0.1 + (mCurrentPlan[mStartPoint] * 0.9);
-		//msg.Velocity = 0.5 + (mCurrentPlan[mStartPoint] / 2.0);
+		msg.Velocity = 0.5 + (mCurrentPlan[mStartPoint] / 2.0);
 	}
-	msg.Turn = -6.0 * angle / ( PI * msg.Velocity );
-	//msg.Turn = -2.0 * angle / PI;
-	if(msg.Turn < -1) msg.Turn = -1;
-	if(msg.Turn >  1) msg.Turn = 1;
-	
+	if(mStatus == NAV_ST_REGISTRATION)
+	{
+		msg.Velocity = msg.Velocity * 0.7;
+	}
 	mCommandPublisher.publish(msg);
 	return true;
 }
@@ -519,6 +552,7 @@ void RobotNavigator::receiveGetMapGoal(const nav2d_navigator::GetFirstMapGoal::C
 	
 	Rate loopRate(FREQUENCY);
 	unsigned int cycles = 0;
+
 	while(true)
 	{
 		if(!ok() || mGetMapActionServer->isPreemptRequested() || mIsStopped)
@@ -537,7 +571,7 @@ void RobotNavigator::receiveGetMapGoal(const nav2d_navigator::GetFirstMapGoal::C
 		spinOnce();
 		loopRate.sleep();
 	}
-	
+
 	if(!getMap() || !setCurrentPosition())
 	{
 		mGetMapActionServer->setAborted();
@@ -565,6 +599,7 @@ void RobotNavigator::receiveGetMapGoal(const nav2d_navigator::GetFirstMapGoal::C
 		while(deltaTheta < -PI) deltaTheta += 2*PI;
 		while(deltaTheta >  PI) deltaTheta -= 2*PI;
 		turn += deltaTheta;
+		
 		lastDirection = mCurrentDirection;
 		if(turn > 2*PI || turn < -2*PI)
 		{
@@ -654,17 +689,20 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	}
 	Registration task = Registration();
 	task.setRequest( goal->action );
-	task.sub_sta = task.nh_sta.subscribe ("base_scan", 1, task.laser_cb );
+
+	task.sub_sta = task.nh_sta.subscribe (mLaserTopic, 1, task.laser_cb );
 	// Start navigating according to the generated plan
 	Rate loopRate(FREQUENCY);
+	spinOnce();
+	loopRate.sleep();
 	unsigned int cycle = 0;
 	bool reached = false, rightDir = true;
 	int recheckCycles = mMinReplanningPeriod * FREQUENCY, mapX, mapY, goalClstr = 0;
-	double target_x = 0, target_y = 0, goal_orientation = 0;
+	double target_x = 0, target_y = 0, goal_orientation = 0, new_angle = 0;
 	
 	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mRegistrationGoalDistance;
 	double targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
-		
+
 	while( task.status() == REG_ST_WORKING )
 	{
 		task.clustering();
@@ -677,10 +715,10 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			stop();
 			return;
 		}
-		
 		if( ( rightDir == true || ( task.action() == REG_ACT_OUTSIDE && task.laserCluster.size() > 2 ) ) && !task.roundCheck() )
 		{
 			goalClstr = task.laserCluster.size();
+			ROS_ERROR("Set target, %d", goalClstr);
 			switch( task.action() )
 			{
 				//case 0:
@@ -689,18 +727,35 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 				//	break;
 				case REG_ACT_OUTSIDE:
 					//outside shelf registration;
-					task.regLiftupOutside( mCurrentDirection, target_x, target_y, goal_orientation );
+					task.regLiftupOutside( mCurrentDirection, target_x, target_y, goal_orientation, new_angle );
 					break;
 				case REG_ACT_UNDER:
 					//under shelf registration;
-					task.regLiftupUnder( mCurrentDirection, target_x, target_y, goal_orientation );
+					task.regLiftupUnder( mCurrentDirection, target_x, target_y, goal_orientation, new_angle );
 					break;
 				default:
 					ROS_ERROR( "Undefined registration request." );
 					break;
 			}
-			target_x = target_x + mCurrentPositionX;
-			target_y = target_y + mCurrentPositionY;
+			StampedTransform Ltransform;
+			try
+			{
+				mTfListener.lookupTransform(mRobotFrame, mLaserFrame, Time(0), Ltransform);
+			}catch(TransformException ex)
+			{
+				ROS_ERROR("Could not get laser sensor position: %s", ex.what());
+				return;
+			}
+			if(target_x != 0 || target_y != 0)
+			{
+				target_x = target_x + mCurrentPositionX + Ltransform.getOrigin().x() * cos( new_angle );
+				target_y = target_y + mCurrentPositionY + Ltransform.getOrigin().x() * sin( new_angle );
+			}else
+			{
+				target_x = target_x + mCurrentPositionX;
+				target_y = target_y + mCurrentPositionY;
+			}
+			ROS_ERROR("PPP: %f, %f,NNN: %f, %f", target_x, target_y, mCurrentPositionX, mCurrentPositionY);
 			cycle = 0;
 			reached = false;
 			rightDir = false;
@@ -730,7 +785,7 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		if(cycle % recheckCycles == 0)
 		{
 			WallTime startTime = WallTime::now();
-			mStatus = NAV_ST_NAVIGATING;
+			mStatus = NAV_ST_REGISTRATION;
 			
 			// Create the plan for navigation
 			mHasNewMap = false;
@@ -748,10 +803,9 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			if(mapX >= (int)mCurrentMap.getWidth()) mapX = mCurrentMap.getWidth() - 1;
 			if(mapY < 0) mapY = 0;
 			if(mapY >= (int)mCurrentMap.getHeight()) mapY = mCurrentMap.getHeight() - 1;
-			
 			bool success = false;
+			ROS_ERROR("MAP: %d, %d, %d", mapX, mapY, mGoalPoint);
 			if(mCurrentMap.getIndex(mapX, mapY, mGoalPoint)) success = createPlan();
-						
 			if(!success)
 			{
 				if(correctGoalPose())
@@ -780,11 +834,11 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		
 		if(reached)
 		{
+			ROS_ERROR("REACHED");
 			// Are we also headed correctly?
 			double deltaTheta = mCurrentDirection - goal_orientation;
 			while(deltaTheta < -PI) deltaTheta += 2*PI;
 			while(deltaTheta >  PI) deltaTheta -= 2*PI;
-			
 			double diff = (deltaTheta > 0) ? deltaTheta : -deltaTheta;
 			ROS_INFO_THROTTLE(1.0,"Heading: %.2f / Desired: %.2f / Difference: %.2f / Tolerance: %.2f", mCurrentDirection, goal_orientation, diff, targetAngle);
 			if(diff <= targetAngle)
@@ -806,6 +860,7 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 						task.initSurrRef();
 						task.setRequest( REG_ACT_UNDER );
 						ROS_INFO("Finishing Stage1 registration. Starting Stage2.");
+						continue;
 					}
 					else if( task.action() == REG_ACT_UNDER && task.roundCheck() )
 					{
@@ -828,8 +883,9 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 				msg.Turn = -1;
 				msg.Velocity = -deltaTheta;
 			}
-			if(msg.Velocity > 1) msg.Velocity = 1;
-				msg.Mode = 1;
+			if(msg.Velocity > 1) 
+				msg.Velocity = 1;
+			msg.Mode = 2;
 				
 			mCommandPublisher.publish(msg);
 		}else
@@ -865,16 +921,15 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		r.final_distance = mCurrentPlan[mStartPoint];
 		mRegistrationActionServer->setSucceeded(r);
 		stop();
-	}else if( task.status() == REG_ST_FAILED )
+	}
+	else if( task.status() == REG_ST_FAILED )
 	{
 		task.reset();
 		task.initSurrRef();
 		ROS_ERROR( "Registration failed." );
 		mRegistrationActionServer->setAborted();
 		stop();
-		return;
 	}
-
 }
 
 void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal::ConstPtr &goal)
@@ -996,8 +1051,9 @@ void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal
 				msg.Turn = -1;
 				msg.Velocity = -deltaTheta;
 			}
-			if(msg.Velocity > 1) msg.Velocity = 1;
-				msg.Mode = 1;
+			if(msg.Velocity > 1) 
+				msg.Velocity = 1;
+			msg.Mode = 1;
 				
 			mCommandPublisher.publish(msg);
 		}else

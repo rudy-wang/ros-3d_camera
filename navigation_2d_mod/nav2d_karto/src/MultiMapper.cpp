@@ -249,7 +249,7 @@ karto::LocalizedLaserScanPtr MultiMapper::createFromRosMessage(const sensor_msgs
 		{
 			// The sensor reported these measurements as valid, but they are
 			// discarded per the limits defined by minimum_range and maximum_range.
-			ROS_WARN_THROTTLE(1, "Laser reading not between range_min and range_max!");
+			ROS_WARN_THROTTLE(1, "Laser reading not between range_min:%f and range_max:%f! (current:%f)", scan.range_min, scan.range_max, *it);
 			readings.Add(scan.range_max);
 		}
 	}

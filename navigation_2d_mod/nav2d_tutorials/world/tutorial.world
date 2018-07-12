@@ -1,15 +1,40 @@
+include "floorplan.inc"
 include "p3at.inc"
 include "cargo.inc"
-include "floorplan.inc"
 
 name                    "Navigation-2D Tutorial"
 interval_sim            100
 quit_time                 0
-resolution                0.05
+resolution                0.025
 show_clock                0
 show_clock_interval     100
 threads                 2
 
+# Put a single cargo into the world
+#cargofeet
+#(
+#  name "cargofeet1"
+#  pose [-3 -3 0 0]
+#  ranger_return 200		# reflects intensity
+#)
+#cargofeet
+#(
+#  name "cargofeet2"
+#  pose [-1.04 -3 0 0]
+#  ranger_return 200		# reflects intensity
+#)
+#cargofeet
+#(
+#  name "cargofeet3"
+#  pose [-3 -1.04 0 0]
+#  ranger_return 200		# reflects intensity
+#)
+#cargofeet
+#(
+#  name "cargofeet4"
+#  pose [-1.04 -1.04 0 0]
+#  ranger_return 200		# reflects intensity
+#)
 # Load an environment bitmap
 floorplan
 ( 
@@ -19,26 +44,9 @@ floorplan
   pose [0 0 0 0]
 )
 
-cargofeet
-( 
-  pose [-3 -3 0 0]
-)
-cargofeet
-( 
-  pose [-1.99 -3 0 0]
-)
-cargofeet
-( 
-  pose [-3 -1.99 0 0]
-)
-cargofeet
-( 
-  pose [-1.99 -1.99 0 0]
-)
-
 # Put a single robot into the world
 pioneer3at
 (
   name "robot"
-  pose [0 -2 0 10]
+  pose [0 -2 0 0]
 )

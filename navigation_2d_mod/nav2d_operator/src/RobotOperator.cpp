@@ -201,7 +201,7 @@ void RobotOperator::executeCommand()
 {
 	// 1. Get a copy of the costmap to work on.
 	mCostmap = mLocalMap->getCostmap();
-    boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock(*(mCostmap->getMutex()));
+	boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock(*(mCostmap->getMutex()));
 	double bestDirection, d;
 	
 	// 2. Set velocity and direction depending on drive mode
@@ -216,6 +216,10 @@ void RobotOperator::executeCommand()
 		mCurrentVelocity = mDesiredVelocity;
 		break;
 	case 1:
+		mCurrentDirection = mDesiredDirection;
+		mCurrentVelocity = mDesiredVelocity;
+		break;
+	case 2:
 		mCurrentDirection = mDesiredDirection;
 		mCurrentVelocity = mDesiredVelocity;
 		break;
@@ -262,6 +266,9 @@ void RobotOperator::executeCommand()
 		{
 			mRecoverySteps = 30; // Recover for 3 seconds
 			ROS_WARN_THROTTLE(1, "Robot is stuck! Trying to recover...");
+		}else if((mDriveMode == 2))
+		{
+			safeVelocity = 0.1;
 		}else
 		{
 			mCurrentVelocity = 0;

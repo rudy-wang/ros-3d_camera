@@ -75,7 +75,6 @@ int NearestFrontierPlanner::findExplorationTarget(GridMap* map, unsigned int sta
 
 	ROS_DEBUG("Checked %d cells.", cellCount);	
 	delete[] plan;
-	
 	if(foundFrontier)
 	{
 		return EXPL_TARGET_SET;

@@ -61,11 +61,13 @@ private:
 
 	std::string mMapFrame;
 	std::string mRobotFrame;
+	std::string mLaserFrame;
 	std::string mMoveActionTopic;
 	std::string mRegistrationActionTopic;
 	std::string mExploreActionTopic;
 	std::string mGetMapActionTopic;
 	std::string mLocalizeActionTopic;
+	std::string mLaserTopic;
 
 	MoveActionServer* mMoveActionServer;
 	ExploreActionServer* mExploreActionServer;
