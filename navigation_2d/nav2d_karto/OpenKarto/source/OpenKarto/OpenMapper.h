@@ -1611,7 +1611,7 @@ namespace karto
      * @param pObject object
      * @return true if the object was processed successfully, false otherwise
      */
-    virtual kt_bool Process(Object* pObject);
+    virtual kt_bool Process(Object* pObject, bool outRequest=false);
     
     /**
      * Returns all processed scans added to the mapper.

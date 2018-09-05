@@ -17,6 +17,7 @@
 
 #include <OpenKarto/OccupancyGrid.h>
 #include <OpenKarto/OpenMapper.h>
+#include <ros/ros.h>
 
 namespace karto
 {
@@ -39,7 +40,7 @@ namespace karto
     }
 
     m_pMinPassThrough = new Parameter<kt_int32u>(NULL, "MinPassThrough", "", "", 2);
-    m_pOccupancyThreshold = new Parameter<kt_double>(NULL, "OccupancyThreshold", "", "", 0.1);
+    m_pOccupancyThreshold = new Parameter<kt_double>(NULL, "OccupancyThreshold", "", "", 0.1);// default: 0.1);
 
     GetCoordinateConverter()->SetScale(1.0 / resolution);
     GetCoordinateConverter()->SetOffset(rOffset);
@@ -133,7 +134,7 @@ namespace karto
 
     karto_const_forEach(LocalizedLaserScanList, &rScans)
     {
-      AddScan(*iter);
+      ROS_ERROR("AA: %d",AddScan(*iter));
     }
 
     UpdateGrid();
@@ -229,7 +230,16 @@ namespace karto
 
     Vector2i gridFrom = m_pCellPassCnt->WorldToGrid(rWorldFrom);
     Vector2i gridTo = m_pCellPassCnt->WorldToGrid(rWorldTo);
+    kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);
 
+    if (m_pCellPassCnt->IsValidGridIndex(gridTo))
+    {
+    	kt_int32u* tmpPCP = m_pCellPassCnt->GetDataPointer();
+    	kt_int32u* tmpHCP = m_pCellHitsCnt->GetDataPointer();
+    	tmpPCP[index] = 0;
+    	tmpHCP[index] = 0;
+    }
+  
     CellUpdater* pCellUpdater = doUpdate ? m_pCellUpdater : NULL;
     m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(), gridTo.GetX(), gridTo.GetY(), pCellUpdater);        
 
@@ -238,10 +248,8 @@ namespace karto
     {
       if (m_pCellPassCnt->IsValidGridIndex(gridTo))
       {
-        kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);
-
-        kt_int32u* pCellPassCntPtr = m_pCellPassCnt->GetDataPointer();
-        kt_int32u* pCellHitCntPtr = m_pCellHitsCnt->GetDataPointer();
+    	kt_int32u* pCellPassCntPtr = m_pCellPassCnt->GetDataPointer();
+    	kt_int32u* pCellHitCntPtr = m_pCellHitsCnt->GetDataPointer();
 
         // increment cell pass through and hit count
         pCellPassCntPtr[index]++;
@@ -287,6 +295,7 @@ namespace karto
     kt_int32u* pCellHitCntPtr = m_pCellHitsCnt->GetDataPointer();
 
     kt_int32u nBytes = GetDataSize();
+	ROS_ERROR("UpdateGrid");
     for (kt_int32u i = 0; i < nBytes; i++, pDataPtr++, pCellPassCntPtr++, pCellHitCntPtr++)
     {
       UpdateCell(pDataPtr, *pCellPassCntPtr, *pCellHitCntPtr);

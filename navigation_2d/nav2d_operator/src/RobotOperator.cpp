@@ -1,5 +1,6 @@
 #include <nav_msgs/GridCells.h>
 #include <math.h>
+#include <omp.h>
 
 #include <nav2d_operator/RobotOperator.h>
 
@@ -56,6 +57,7 @@ RobotOperator::RobotOperator()
 
 RobotOperator::~RobotOperator()
 {
+	#pragma omp parallel for
 	for(int i = 0; i < LUT_RESOLUTION; i++)
 	{
 		delete mTrajTable[i];
@@ -64,10 +66,12 @@ RobotOperator::~RobotOperator()
 
 void RobotOperator::initTrajTable()
 {
+	#pragma omp parallel for
 	for(int i = 0; i < (LUT_RESOLUTION * 4) + 2; i++)
 	{
 		mTrajTable[i] = NULL;
-	}	
+	}
+	#pragma omp parallel for
 	for(int i = 1; i < LUT_RESOLUTION; i++)
 	{
 		double tw = -PI * i / LUT_RESOLUTION;
@@ -111,7 +115,7 @@ void RobotOperator::initTrajTable()
 		brcloud->header.stamp = ros::Time(0);
 		brcloud->header.frame_id = mRobotFrame;
 		brcloud->points.resize(points.size());
-		
+		#pragma omp parallel for
 		for(unsigned int j = 0; j < points.size(); j++)
 		{
 			flcloud->points[j] = points[j];
@@ -169,7 +173,7 @@ void RobotOperator::initTrajTable()
 	mTrajTable[LUT_RESOLUTION*2] = turn;
 	mTrajTable[LUT_RESOLUTION*2 + 1] = turn;
 	mTrajTable[LUT_RESOLUTION*4 + 1] = turn;
-	
+	#pragma omp parallel for
 	for(int i = 0; i < (LUT_RESOLUTION * 4) + 2; i++)
 	{
 		if(!mTrajTable[i])
@@ -219,6 +223,10 @@ void RobotOperator::executeCommand()
 		mCurrentDirection = mDesiredDirection;
 		mCurrentVelocity = mDesiredVelocity;
 		break;
+	case 2:
+		mCurrentDirection = mDesiredDirection;
+		mCurrentVelocity = mDesiredVelocity;
+		break;
 	default:
 		ROS_ERROR("Invalid drive mode!");
 		mCurrentVelocity = 0.0;
@@ -262,6 +270,9 @@ void RobotOperator::executeCommand()
 		{
 			mRecoverySteps = 30; // Recover for 3 seconds
 			ROS_WARN_THROTTLE(1, "Robot is stuck! Trying to recover...");
+		}else if((mDriveMode == 2))
+		{
+			safeVelocity = 0.1;
 		}else
 		{
 			mCurrentVelocity = 0;
@@ -280,6 +291,7 @@ void RobotOperator::executeCommand()
 		route_msg.cell_height = mCostmap->getResolution();
 	
 		route_msg.cells.resize(freeCells);
+		#pragma omp parallel for
 		for(int i = 0; i < freeCells; i++)
 		{
 			route_msg.cells[i].x = transformedCloud.points[i].x;
@@ -309,6 +321,7 @@ void RobotOperator::executeCommand()
 	
 		int freeSpacePlan = calculateFreeSpace(&transformedPlanCloud);
 		plan_msg.cells.resize(freeSpacePlan);
+		#pragma omp parallel for
 		for(int i = 0; i < freeSpacePlan; i++)
 		{
 			plan_msg.cells[i].x = transformedPlanCloud.points[i].x;

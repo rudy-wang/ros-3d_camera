@@ -1,3 +1,4 @@
+geometry_msgs/Pose2D target_pose
 int8 action
 float32 target_distance
 float32 target_angle

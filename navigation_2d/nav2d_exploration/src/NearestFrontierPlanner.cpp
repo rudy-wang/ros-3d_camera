@@ -1,4 +1,5 @@
 #include "NearestFrontierPlanner.h"
+#include <omp.h>
 
 typedef std::multimap<double,unsigned int> Queue;
 typedef std::pair<double,unsigned int> Entry;
@@ -18,6 +19,7 @@ int NearestFrontierPlanner::findExplorationTarget(GridMap* map, unsigned int sta
 	// Create some workspace for the wavefront algorithm
 	unsigned int mapSize = map->getSize();
 	double* plan = new double[mapSize];
+	#pragma omp parallel for
 	for(unsigned int i = 0; i < mapSize; i++)
 	{
 		plan[i] = -1;
@@ -60,7 +62,7 @@ int NearestFrontierPlanner::findExplorationTarget(GridMap* map, unsigned int sta
 			ind[1] = index + 1;               // right
 			ind[2] = index - map->getWidth(); // up
 			ind[3] = index + map->getWidth(); // down
-			
+			#pragma omp parallel for
 			for(unsigned int it = 0; it < 4; it++)
 			{
 				unsigned int i = ind[it];
@@ -75,7 +77,6 @@ int NearestFrontierPlanner::findExplorationTarget(GridMap* map, unsigned int sta
 
 	ROS_DEBUG("Checked %d cells.", cellCount);	
 	delete[] plan;
-	
 	if(foundFrontier)
 	{
 		return EXPL_TARGET_SET;

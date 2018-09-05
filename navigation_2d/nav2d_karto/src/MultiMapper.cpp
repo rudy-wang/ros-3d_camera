@@ -1,6 +1,7 @@
 #include <visualization_msgs/Marker.h>
 #include <nav2d_msgs/RobotPose.h>
 #include <nav2d_karto/MultiMapper.h>
+#include <omp.h>
 
 // compute linear index for given map coords
 #define MAP_IDX(sx, i, j) ((sx) * (j) + (i))
@@ -171,6 +172,7 @@ MultiMapper::MultiMapper()
 		ROS_INFO("Initialized robot %d, waiting for map from robot 1 now.", mRobotID);
 		mSelfLocalizer = new SelfLocalizer();
 	}
+	mOutRequest = false;
 }
 
 MultiMapper::~MultiMapper()
@@ -330,7 +332,7 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 		bool success;
 		try
 		{
-			success = mMapper->Process(laserScan);
+			success = mMapper->Process(laserScan,mOutRequest);
 		}
 		catch(karto::Exception e)
 		{
@@ -340,6 +342,7 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 		
 		if(success)
 		{
+			ROS_ERROR("success");
 			// Compute the map->odom transform
 			karto::Pose2 corrected_pose = laserScan->GetCorrectedPose();
 			tf::Pose map_in_robot(tf::createQuaternionFromYaw(corrected_pose.GetHeading()), tf::Vector3(corrected_pose.GetX(), corrected_pose.GetY(), 0.0));
@@ -364,6 +367,7 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 			}
 			mNodesAdded++;
 			mMapChanged = true;
+			mOutRequest = false;
 
 			ros::WallDuration d = ros::WallTime::now() - mLastMapUpdate;
 			if(mMapUpdateRate > 0 && d.toSec() > mMapUpdateRate)
@@ -390,6 +394,7 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 
 bool MultiMapper::getMap(nav_msgs::GetMap::Request  &req, nav_msgs::GetMap::Response &res)
 {
+	mOutRequest = true;
 	if(mState == ST_WAITING_FOR_MAP && mNodesAdded < mMinMapSize)
 	{
 		ROS_INFO("Still waiting for map from robot 1.");
@@ -441,7 +446,7 @@ bool MultiMapper::sendMap()
 		marker.color.g = 1.0;
 		marker.color.b = 0.0;
 		marker.points.resize(vertices.Size());
-		
+		#pragma omp parallel for
 		for(int i = 0; i < vertices.Size(); i++)
 		{
 			marker.points[i].x = vertices[i]->GetVertexObject()->GetCorrectedPose().GetX();
@@ -462,7 +467,7 @@ bool MultiMapper::sendMap()
 		marker.color.g = 0.0;
 		marker.color.b = 0.0;
 		marker.points.resize(edges.Size() * 2);
-		
+		#pragma omp parallel for
 		for(int i = 0; i < edges.Size(); i++)
 		{
 			marker.points[2*i].x = edges[i]->GetSource()->GetVertexObject()->GetCorrectedPose().GetX();
@@ -508,9 +513,11 @@ bool MultiMapper::updateMap()
 		mGridMap.info.height = height;
 		mGridMap.data.resize(mGridMap.info.width * mGridMap.info.height);
 	}
-	
+			ROS_ERROR("update");
+	#pragma omp parallel for
 	for (unsigned int y = 0; y < height; y++)
 	{
+		#pragma omp parallel for
 		for (unsigned int x = 0; x < width; x++) 
 		{
 			// Getting the value at position x,y
@@ -652,6 +659,7 @@ void MultiMapper::sendLocalizedScan(const sensor_msgs::LaserScan::ConstPtr& scan
 	
 	unsigned int nReadings = scan->ranges.size();
 	rosScan.scan.ranges.resize(nReadings);
+	#pragma omp parallel for
 	for(unsigned int i = 0; i < nReadings; i++)
 	{
 		rosScan.scan.ranges[i] = scan->ranges[i];

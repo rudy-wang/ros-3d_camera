@@ -14,11 +14,11 @@ env:
     - CATKIN_WS_SRC=${CATKIN_WS}/src
   matrix:
     - CI_ROS_DISTRO="indigo"
-    - CI_ROS_DISTRO="jade"
 install:
   - sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu trusty main" > /etc/apt/sources.list.d/ros-latest.list'
   - wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
   - sudo apt-get update -qq
+  - sudo apt-get install -y dpkg  # to upgrade to dpkg >= 1.17.5ubuntu5.8, which fixes https://bugs.launchpad.net/ubuntu/+source/dpkg/+bug/1730627
   - sudo apt-get install -qq -y python-rosdep python-catkin-tools
   - sudo rosdep init
   - rosdep update
@@ -35,7 +35,13 @@ script:
   - catkin config --install
   # Build [and Install] packages
   - catkin build --limit-status-rate 0.1 --no-notify -DCMAKE_BUILD_TYPE=Release
+  # NOTE on testing: `catkin run_tests` will show the output of the tests
+  # (gtest, nosetest, etc..) but always returns 0 (success) even if a test
+  # fails. Running `catkin_test_results` aggregates all the results and returns
+  # non-zero when a test fails (which notifies the CI that the build failed).
   # Build tests
   - catkin build --limit-status-rate 0.1 --no-notify --make-args tests
   # Run tests
   - catkin run_tests
+  # Verify test results
+  - catkin_test_results

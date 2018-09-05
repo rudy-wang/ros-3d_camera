@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include <nav_msgs/GetMap.h>
+#include <std_msgs/UInt8.h>
 #include <std_srvs/Trigger.h>
 #include <tf/transform_listener.h>
 #include <actionlib/server/simple_action_server.h>
@@ -7,6 +8,7 @@
 #include <nav2d_navigator/MoveToPosition2DAction.h>
 #include <nav2d_navigator/ExploreAction.h>
 #include <nav2d_navigator/RegistrationAction.h>
+#include <nav2d_navigator/LiftAction.h>
 #include <nav2d_navigator/GetFirstMapAction.h>
 #include <nav2d_navigator/LocalizeAction.h>
 
@@ -20,6 +22,7 @@
 typedef actionlib::SimpleActionServer<nav2d_navigator::MoveToPosition2DAction> MoveActionServer;
 typedef actionlib::SimpleActionServer<nav2d_navigator::ExploreAction> ExploreActionServer;
 typedef actionlib::SimpleActionServer<nav2d_navigator::RegistrationAction> RegistrationActionServer;
+typedef actionlib::SimpleActionServer<nav2d_navigator::LiftAction> LiftActionServer;
 typedef actionlib::SimpleActionServer<nav2d_navigator::GetFirstMapAction> GetMapActionServer;
 typedef actionlib::SimpleActionServer<nav2d_navigator::LocalizeAction> LocalizeActionServer;
 typedef pluginlib::ClassLoader<ExplorationPlanner> PlanLoader;
@@ -35,6 +38,7 @@ public:
 	void receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal::ConstPtr &goal);
 	void receiveExploreGoal(const nav2d_navigator::ExploreGoal::ConstPtr &goal);
 	void receiveRegistrationGoal(const nav2d_navigator::RegistrationGoal::ConstPtr &goal);
+	void receiveLiftGoal(const nav2d_navigator::LiftGoal::ConstPtr &goal);
 	void receiveGetMapGoal(const nav2d_navigator::GetFirstMapGoal::ConstPtr &goal);
 	void receiveLocalizeGoal(const nav2d_navigator::LocalizeGoal::ConstPtr &goal);
 
@@ -56,20 +60,25 @@ private:
 	ros::Publisher mPlanPublisher;
 	ros::Publisher mCommandPublisher;
 	ros::Publisher mMarkerPublisher;
+	ros::Publisher mLiftCmdPublisher;
 	ros::ServiceServer mStopServer;
 	ros::ServiceServer mPauseServer;
 
 	std::string mMapFrame;
 	std::string mRobotFrame;
+	std::string mLaserFrame;
 	std::string mMoveActionTopic;
 	std::string mRegistrationActionTopic;
+	std::string mLiftActionTopic;
 	std::string mExploreActionTopic;
 	std::string mGetMapActionTopic;
 	std::string mLocalizeActionTopic;
+	std::string mLaserTopic;
 
 	MoveActionServer* mMoveActionServer;
 	ExploreActionServer* mExploreActionServer;
 	RegistrationActionServer* mRegistrationActionServer;
+	LiftActionServer* mLiftActionServer;
 	GetMapActionServer* mGetMapActionServer;
 	LocalizeActionServer* mLocalizeActionServer;
 
@@ -98,6 +107,8 @@ private:
 	double mRobotRadius;
 	unsigned int mCellInflationRadius;
 	unsigned int mCellRobotRadius;
+	unsigned int mLiftStatus;
+	bool mStaticMap;
 
 	char mCostObstacle;
 	char mCostLethal;

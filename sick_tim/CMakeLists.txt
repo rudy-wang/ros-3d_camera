@@ -3,10 +3,12 @@ project(sick_tim)
 
 find_package(catkin REQUIRED
     COMPONENTS
-      roscpp
-      sensor_msgs
       diagnostic_updater
-      dynamic_reconfigure)
+      dynamic_reconfigure
+      roscpp
+      roslaunch
+      sensor_msgs
+)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(libusb libusb-1.0)
@@ -54,6 +56,14 @@ add_executable(sick_tim551_2050001
     src/sick_tim551_2050001_parser.cpp)
 target_link_libraries(sick_tim551_2050001 sick_tim_3xx)
 
+add_executable(sick_mrs1000
+  src/sick_mrs1000.cpp
+  src/sick_mrs1000_communication.cpp
+  src/sick_tim_common_tcp.cpp
+  src/scan_and_cloud_parser.cpp
+  src/sick_mrs1000_parser.cpp)
+target_link_libraries(sick_mrs1000 sick_tim_3xx)
+
 add_executable(sick_tim_datagram_test
     test/sick_tim_datagram_test.cpp
     src/sick_tim310s01_parser.cpp
@@ -69,6 +79,7 @@ install(
         sick_tim310
         sick_tim310_1130000m01
         sick_tim551_2050001
+        sick_mrs1000
         sick_tim_datagram_test
     RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
@@ -85,3 +96,7 @@ install(DIRECTORY meshes/
 
 install(DIRECTORY urdf/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/urdf)
+
+if(CATKIN_ENABLE_TESTING)
+  roslaunch_add_file_check(launch)
+endif(CATKIN_ENABLE_TESTING)

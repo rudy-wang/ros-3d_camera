@@ -1,3 +1,4 @@
+geometry_msgs/Pose2D target_pose
 int8 action
 # 0 : reserved.
 # 1 : for liftting up( outside shelf ).

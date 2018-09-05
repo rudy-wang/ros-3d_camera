@@ -4,6 +4,7 @@
 
 #include "MinPosPlanner.h"
 #include <visualization_msgs/Marker.h>
+#include <omp.h>
 
 MinPosPlanner::MinPosPlanner()
 {
@@ -38,6 +39,7 @@ int MinPosPlanner::findExplorationTarget(GridMap* map, unsigned int start, unsig
 	if(mPlan)
 		delete[] mPlan;
 	mPlan = new double[mapSize];
+	#pragma omp parallel for
 	for(unsigned int i = 0; i < mapSize; i++)
 	{
 		mPlan[i] = -1;
@@ -80,6 +82,7 @@ int MinPosPlanner::findExplorationTarget(GridMap* map, unsigned int start, unsig
 		queue.erase(next);
 		
 		// Now continue 1st level WPA
+		#pragma omp parallel for
 		for(unsigned int it = 0; it < 4; it++)
 		{
 			unsigned int i = index + mOffset[it];
@@ -139,11 +142,13 @@ int MinPosPlanner::findExplorationTarget(GridMap* map, unsigned int start, unsig
 		
 		unsigned int p = 0;
 		srand(1337);
+		#pragma omp parallel for
 		for(unsigned int i = 0; i < mFrontiers.size(); i++)
 		{
 			char r = rand() % 256;
 			char g = rand() % 256;
 			char b = rand() % 256;
+			#pragma omp parallel for
 			for(unsigned int j = 0; j < mFrontiers[i].size(); j++)
 			{
 				if(p < mFrontierCells)
@@ -179,6 +184,7 @@ int MinPosPlanner::findExplorationTarget(GridMap* map, unsigned int start, unsig
 	// Get positions of other robots
 	std::set<unsigned int> indices;
 	PoseList l = mRobotList.getRobots();
+	#pragma omp parallel for
 	for(PoseList::iterator p = l.begin(); p != l.end(); p++)
 	{
 		if((int)p->first == mRobotID) continue;
@@ -200,12 +206,14 @@ int MinPosPlanner::findExplorationTarget(GridMap* map, unsigned int start, unsig
 	{
 		// Reset the plan
 		double* plan = new double[mapSize];
+		#pragma omp parallel for
 		for(unsigned int i = 0; i < mapSize; i++) plan[i] = -1;
 		Queue frontQueue;
 		unsigned int rank = 0;
 		double distanceToRobot = -1;
 		
 		// Add all cells of current frontier
+		#pragma omp parallel for
 		for(unsigned int cell = 0; cell < mFrontiers[frontier].size(); cell++)
 		{
 			plan[mFrontiers[frontier][cell]] = 0;
@@ -227,7 +235,7 @@ int MinPosPlanner::findExplorationTarget(GridMap* map, unsigned int start, unsig
 				break;
 			}
 			if(indices.find(index) != indices.end()) rank++; 
-			
+			#pragma omp parallel for
 			for(unsigned int it = 0; it < 4; it++)
 			{
 				int ind = index + mOffset[it];
@@ -297,6 +305,7 @@ void MinPosPlanner::findCluster(GridMap* map, unsigned int startCell)
 		mFrontierCells++;
 		
 		// Add all adjacent cells to queue
+		#pragma omp parallel for
 		for(unsigned int it = 0; it < 4; it++)
 		{
 			int i = index + mOffset[it];

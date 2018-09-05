@@ -3,7 +3,7 @@
 
 #define NODE_NAME     "tfpub"
 #define SENSOR_TOPIC "sensor_value"
-#define TICK2RAD      0.000628318  // 2 * 3.14159265359 / 10000 = 0.000628318f
+#define TICK2RAD      0.000251327  // 2 * 3.14159265359 / 25000 = 0.000628318f
 #define WHEEL_RADIUS  0.09
 #define WHEEL_SEPARATION 0.46
 
@@ -51,8 +51,8 @@ private:
 	void updateJointStates();
 	void updateTF();
 	void updateMotorInfo(int32_t left_tick, int32_t right_tick);
-	bool calcOdometry(double diff_time);
-	void publishDriveInformation();
+	bool calcOdometry(double diff_time, double theta);
+	void publishDriveInformation(int32_t theta);
 
 	nav_msgs::Odometry mOdom;
 	sensor_msgs::JointState mJoint_states;

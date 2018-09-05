@@ -3,16 +3,17 @@
 	<param name="use_sim_time" value="false" />
 
 	<node name="ToArduino" pkg="rosserial_python" type="serial_node.py" output="screen" />
+  	<param name="robot_description" command="$(find xacro)/xacro '$(find nav2d_tutorials)/param/UAGV.urdf.xacro'" />
 	
 	<!-- ====== Start SICK LIDAR ====== -->
-  	<param name="robot_description" command="$(find xacro)/xacro.py '$(find sick_tim)/urdf/example.urdf.xacro'" />
-	<node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" />
+	<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
 
 	<node name="sick_tim571_2050101" pkg="sick_tim" type="sick_tim551_2050001" respawn="false" output="screen">
     		<!-- default values: -->
+		<param name="min_ang" type="double" value="-2" />
+		<param name="max_ang" type="double" value="2" />
+		<param name="update_rate" type="double" value="20.0" />
 	    	<!--
-		<param name="min_ang" type="double" value="-2.35619449019" />
-		<param name="max_ang" type="double" value="2.35619449019" />
 		<param name="intensity" type="bool" value="True" />
 		<param name="skip" type="int" value="0" />
 		<param name="frame_id" type="str" value="laser" />
@@ -37,15 +38,11 @@
 	</node>
 	<!-- ================================ -->
 
-	<!-- Custmized setting -->
-	<node name="fix_tf_tree" pkg="tf" type="static_transform_publisher" args="0.2815 0 0.15 0 0 0 1 base_link laser_link 100" />
-
 	<!-- Some general parameters -->
 	<rosparam file="$(find nav2d_tutorials)/param/ros.yaml"/>
 
 	<!-- Start the TFpub to publish the TF info -->
 	<node name="TFpub" pkg="nav2d_tfpub" type="tfpub" />
-	//mOdom.child_frame_id  = "base_link";
 
 	<!-- Start the Operator to control the simulated robot -->
 	<node name="Operator" pkg="nav2d_operator" type="operator" >
@@ -75,9 +72,4 @@
 	<!-- Start the joystick-driver and remote-controller for operation-->
 	<node name="Joystick" pkg="joy" type="joy_node" />
 	<node name="Remote" pkg="nav2d_remote" type="remote_joy" />
-
-	<!-- RVIZ to view the visualization -->
-	<!-- node name="RVIZ" pkg="rviz" type="rviz" args=" -d $(find nav2d_tutorials)/param/UAGV.rviz" / -->
- 
-	
 </launch>

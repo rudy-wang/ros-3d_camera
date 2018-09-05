@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav2d_operator
   nav2d_registration
   nav2d_msgs
+  std_msgs
 )
 
 ################################################
@@ -24,6 +25,7 @@ add_action_files(
   FILES
   Explore.action
   Registration.action
+  Lift.action
   GetFirstMap.action
   Localize.action
   MoveToPosition2D.action
@@ -52,6 +54,7 @@ catkin_package(
     geometry_msgs
     nav2d_msgs
     nav2d_operator
+	std_msgs
 )
 
 ###########
@@ -72,6 +75,7 @@ add_executable(navigator src/navigator.cpp src/RobotNavigator.cpp)
 add_executable(set_goal_client src/set_goal_client.cpp)
 add_executable(explore_client src/explore_client.cpp)
 add_executable(registration_client src/registration_client.cpp)
+add_executable(lift_client src/lift_client.cpp)
 add_executable(get_map_client src/get_map_client.cpp)
 add_executable(localize_client src/localize_client.cpp)
 
@@ -82,6 +86,7 @@ add_dependencies(navigator nav2d_navigator_generate_messages_cpp ${catkin_EXPORT
 add_dependencies(set_goal_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(explore_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(registration_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
+add_dependencies(lift_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(get_map_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(localize_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 
@@ -91,6 +96,7 @@ target_link_libraries(navigator RobotNavigator ${catkin_LIBRARIES})
 target_link_libraries(set_goal_client ${catkin_LIBRARIES})
 target_link_libraries(explore_client ${catkin_LIBRARIES})
 target_link_libraries(registration_client ${catkin_LIBRARIES})
+target_link_libraries(lift_client ${catkin_LIBRARIES})
 target_link_libraries(get_map_client ${catkin_LIBRARIES})
 target_link_libraries(localize_client ${catkin_LIBRARIES})
 
@@ -110,6 +116,7 @@ install(
     set_goal_client
     explore_client
     registration_client
+    lift_client
     get_map_client
     localize_client
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

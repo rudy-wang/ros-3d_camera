@@ -27,6 +27,7 @@
 #include <map>
 #include <iostream>
 
+#include <ros/ros.h>
 #include <OpenKarto/OpenMapper.h>
 #include <OpenKarto/Logger.h>
 
@@ -293,6 +294,7 @@ namespace karto
 
   void MapperSensorManager::AddLocalizedObject(LocalizedObject* pObject)
   {
+ROS_ERROR("add obj");
     GetSensorDataManager(pObject)->AddObject(pObject, m_pMapperSensorManagerPrivate->m_NextUniqueId);
     m_pMapperSensorManagerPrivate->m_Objects.Add(pObject);
     m_pMapperSensorManagerPrivate->m_NextUniqueId++;
@@ -2200,7 +2202,7 @@ namespace karto
     m_pMinimumTravelDistance = new Parameter<kt_double>(GetParameterSet(), "MinimumTravelDistance", "Mapper::Minimum Travel::Distance", "MinimumTravelDistance", 0.2);
     m_pMinimumTravelHeading = new Parameter<kt_double>(GetParameterSet(), "MinimumTravelHeading", "Mapper::Minimum Travel::Heading", "MinimumTravelHeading", math::DegreesToRadians(20));
 
-    m_pScanBufferSize = new Parameter<kt_int32u>(GetParameterSet(), "ScanBufferSize", "Mapper::Scan Buffer::Size", "ScanBufferSize", 70);
+    m_pScanBufferSize = new Parameter<kt_int32u>(GetParameterSet(), "ScanBufferSize", "Mapper::Scan Buffer::Size", "ScanBufferSize", 1);
     m_pScanBufferMaximumScanDistance = new Parameter<kt_double>(GetParameterSet(), "ScanBufferMaximumScanDistance", "Mapper::Scan Buffer::Maximum Scan Distance", "ScanBufferMaximumScanDistance", 20);
     m_pUseResponseExpansion = new Parameter<kt_bool>(GetParameterSet(), "UseResponseExpansion", "Mapper::Use::Response Expansion", "UseResponseExpansion", false);
 
@@ -2266,7 +2268,7 @@ namespace karto
     m_Initialized = false;
   }
 
-  kt_bool OpenMapper::Process(Object* pObject)
+  kt_bool OpenMapper::Process(Object* pObject, bool outRequest)
   {
     if (pObject == NULL)
     {
@@ -2287,7 +2289,6 @@ namespace karto
       
       // register sensor
       m_pMapperSensorManager->RegisterSensor(pLaserRangeFinder->GetIdentifier());
-      
       return true;
     }
     
@@ -2330,7 +2331,7 @@ namespace karto
       
       // check custom data if object is not a scan or if scan has not moved enough (i.e.,
       // scan is outside minimum boundary or if heading is larger then minimum heading)
-      if (pScan == NULL || (!HasMovedEnough(pScan, pLastScan) && !pScan->IsGpsReadingValid()))
+      if (pScan == NULL || (!HasMovedEnough(pScan, pLastScan) && !pScan->IsGpsReadingValid() && !outRequest))
       {
         if (pLocalizedObject->HasCustomItem() == true)
         {
@@ -2339,10 +2340,8 @@ namespace karto
           // add to graph
           m_pGraph->AddVertex(pLocalizedObject);
           m_pGraph->AddEdges(pLocalizedObject);
-          
           return true;
         }
-        
         return false;
       }
       
@@ -2383,7 +2382,6 @@ namespace karto
       m_pMapperSensorManager->SetLastScan(pScan);
       
       ScanMatchingEnd(pScan);
-      
       isObjectProcessed = true;
     } // if object is LocalizedObject
     

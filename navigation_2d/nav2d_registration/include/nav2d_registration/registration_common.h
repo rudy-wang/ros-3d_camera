@@ -34,7 +34,7 @@ class Registration
 	public:
 		Registration();
 		~Registration();
-		static void laser_cb( const sensor_msgs::LaserScan& msg );
+		static void laser_cb( const sensor_msgs::LaserScan::ConstPtr& msg );
 		void setRequest( int action );
 		int status();
 		int action();
@@ -44,8 +44,8 @@ class Registration
 		void aborted();
 		bool roundCheck();
 		void clustering();
-		void regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &add_orientation );
-		void regLiftupUnder( double last_orientation, double &add_x, double &add_y, double &add_orientation );
+		void regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
+		void regLiftupUnder( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
 		
 		ros::NodeHandle nh_sta;
 		static ros::Subscriber sub_sta;

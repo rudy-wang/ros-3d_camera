@@ -12,8 +12,8 @@ RobotTFpub::RobotTFpub()
 	// Publish / subscribe to ROS topics
 	ros::NodeHandle robotNode;
 	mSensorSubscriber = robotNode.subscribe(SENSOR_TOPIC, 1, &RobotTFpub::receiveSensor, this);
-	mOdom_pub = robotNode.advertise<nav_msgs::Odometry>("odom", 1);
-	mJoint_states_pub = robotNode.advertise<sensor_msgs::JointState>("joint_states", 1);
+	mOdom_pub = robotNode.advertise<nav_msgs::Odometry>("odom", 5);
+	mJoint_states_pub = robotNode.advertise<sensor_msgs::JointState>("joint_states", 5);
 
 	mJoint_states_name[0] = "wheel_left_joint";
 	mJoint_states_name[1] = "wheel_right_joint";
@@ -28,7 +28,8 @@ RobotTFpub::RobotTFpub()
 	mJoint_states.name.resize(2);
 	mJoint_states.position.resize(2);
 	mJoint_states.velocity.resize(2);
-  	mJoint_states.name[0] = mJoint_states_name[1];
+  	mJoint_states.name[0] = mJoint_states_name[0];
+  	mJoint_states.name[1] = mJoint_states_name[1];
 
 	mOdom.header.frame_id = "odom";
 	mOdom.child_frame_id  = "base_link";
@@ -58,7 +59,7 @@ RobotTFpub::~RobotTFpub()
 void RobotTFpub::receiveSensor(const std_msgs::Int32MultiArray::ConstPtr& msg)
 {
 	updateMotorInfo(msg->data[0], msg->data[1]);
-	publishDriveInformation();
+	publishDriveInformation(msg->data[2]);
 }
 
 void RobotTFpub::updateOdometry()
@@ -125,24 +126,25 @@ void RobotTFpub::updateMotorInfo(int32_t left_tick, int32_t right_tick)
 
 	current_tick = left_tick;
 
-	mLast_diff_tick[0] = mLast_tick[0] - current_tick;	// both wheel encoder value will increase when UAGV move forward.
+	mLast_diff_tick[0] = current_tick - mLast_tick[0];
 	mLast_tick[0]      = current_tick;
 	mLast_rad[0]       += TICK2RAD * (double)mLast_diff_tick[0];
 
 	current_tick = right_tick;
 
-	mLast_diff_tick[1] = mLast_tick[1] - current_tick;	// both wheel encoder value will decrease when UAGV move forward.
+	mLast_diff_tick[1] = current_tick - mLast_tick[1];
 	mLast_tick[1]      = current_tick;
 	mLast_rad[1]       += TICK2RAD * (double)mLast_diff_tick[1];
 }
 
-bool RobotTFpub::calcOdometry(double diff_time)
+bool RobotTFpub::calcOdometry(double diff_time, double theta)
 {
 	float* orientation;
 	double wheel_l, wheel_r;      // rotation value of wheel [rad]
 	double delta_s, delta_theta;
 	double v, w;                  // v = translational velocity [m/s], w = rotational velocity [rad/s]
 	double step_time;
+	static double last_theta = 0.0;
 
 	wheel_l = wheel_r = 0.0;
 	delta_s = delta_theta = 0.0;
@@ -167,8 +169,8 @@ bool RobotTFpub::calcOdometry(double diff_time)
 
 	delta_s	= WHEEL_RADIUS * (wheel_r + wheel_l) / 2.0;  // distance whicn center of wheels moved a.k.a arc length of the moving curve.
 	delta_theta = WHEEL_RADIUS * (wheel_r - wheel_l) / WHEEL_SEPARATION;  // rotation angle of robot.
-	// orientation = sensors.getOrientation(); // use this line if we have any imu sensor;
-	// theta       = atan2f(orientation[1]*orientation[2] + orientation[0]*orientation[3], 0.5f - orientation[2]*orientation[2] - orientation[3]*orientation[3]); // use this line if we have any imu sensor;
+	//delta_theta = theta - last_theta; // use this line if we have any imu sensor;
+
 	v = delta_s / step_time;
 	w = delta_theta / step_time;
 
@@ -179,17 +181,17 @@ bool RobotTFpub::calcOdometry(double diff_time)
 	mOdom_pose[0] += delta_s * cos(mOdom_pose[2] + delta_theta / 2.0 );
 	mOdom_pose[1] += delta_s * sin(mOdom_pose[2] + delta_theta / 2.0 );
 	mOdom_pose[2] += delta_theta;
-	while (mOdom_pose[2]>2*PI) mOdom_pose[2] = mOdom_pose[2] - 2*PI;
 
 	// compute odometric instantaneouse velocity
 	mOdom_vel[0] = v;
 	mOdom_vel[1] = 0.0;
 	mOdom_vel[2] = w;
 
+	//last_theta = theta;
 	return true;
 }
 
-void RobotTFpub::publishDriveInformation()
+void RobotTFpub::publishDriveInformation(int32_t theta)
 {
 	double time_now = ros::Time::now().toSec();
 	double step_time = time_now - mPrev_update_time;
@@ -198,7 +200,7 @@ void RobotTFpub::publishDriveInformation()
 	ros::Time stamp_now = ros::Time::now();
 
 	// calculate odometry
-	calcOdometry((double)(step_time));
+	calcOdometry((double)(step_time), (double)theta/100000.0);
 
 	// odometry
 	updateOdometry();

@@ -1,0 +1,6 @@
+bool cmd
+uint8 target_status
+---
+uint8 final_status
+---
+uint8 status

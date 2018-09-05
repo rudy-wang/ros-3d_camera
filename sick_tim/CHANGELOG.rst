@@ -2,6 +2,29 @@
 Changelog for package sick_tim
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.0.13 (2018-05-25)
+-------------------
+* First release into melodic
+* Fix mrs1000 frame_id parameter (`#61 <https://github.com/uos/sick_tim/issues/61>`_)
+  If frame_id parameter was defined to something other than "laser", the node would not publish the /scan topic and the /cloud header.frame_id would always be "laser" even if a different one was defined. This fixes both issues.
+* Add min/max angle and range parameters to URDF macros (`#60 <https://github.com/uos/sick_tim/issues/60>`_)
+* catkin test-flag around `roslaunch_add_file_check` (`#59 <https://github.com/uos/sick_tim/issues/59>`_)
+  Eval `CATKIN_ENABLE_TESTING` prior to call `roslaunch_add_file_check` to ensure the function is defined.
+* Contributors: Jacob Perron, Jeremie Deray, Patrick Hussey
+
+0.0.12 (2018-01-31)
+-------------------
+* Fix memory leak (`#56 <https://github.com/uos/sick_tim/issues/56>`_)
+  s should be deleted before returning.
+* mrs1000: Make output REP-117 compliant (invalid = +inf)
+  This is a port of e964fb4c to the MRS-1000.
+* sick mrs1000 driver (`#55 <https://github.com/uos/sick_tim/issues/55>`_)
+  This commit adds SICK MRS-1000 support. The initialization of the device
+  has to be different, due to that I have made the methods for initialization
+  virtual and now the mrs1000 driver runs different init code. Also the
+  support for PointCloud2 is new.
+* Contributors: Sebastian Pütz, Jochen Sprickerhof, Martin Günther
+
 0.0.11 (2017-12-21)
 -------------------
 * Make output REP-117 compliant (`#54 <https://github.com/uos/sick_tim/issues/54>`_)

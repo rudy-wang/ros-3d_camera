@@ -3,6 +3,7 @@
 
 #include "ros/ros.h"
 #include "nav_msgs/OccupancyGrid.h"
+#include <omp.h>
 
 class GridMap
 {
@@ -43,7 +44,7 @@ public:
 	{
 		if(i >= mMapWidth * mMapHeight)
 		{
-			ROS_ERROR("getCoords() failed!");
+			//ROS_ERROR("getCoords() failed!");
 			return false;
 		}
 		y = i / mMapWidth;
@@ -102,8 +103,9 @@ public:
 		if(offset < 0) offset *= -1;
 		int y = index / mMapWidth;
 		int x = index % mMapWidth;
-		
+		#pragma omp parallel for
 		for(int i = -offset; i <= offset; i++)
+			#pragma omp parallel for
 			for(int j = -offset; j <= offset; j++)
 				if(getIndex(x+i, y+j, index) && isFree(index))
 					neighbors.push_back(index);

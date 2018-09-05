@@ -2,7 +2,7 @@
 
 #include <tf/transform_listener.h>
 #include <math.h>
-
+#include <omp.h>
 bool isNaN(double a)
 {
 	//return (a != a);
@@ -40,7 +40,7 @@ LaserData::LaserData(const sensor_msgs::LaserScan::ConstPtr& scan)
 	double angle_inc = scan->angle_increment; 
 	
 	angle_inc = fmod(angle_inc + 5*M_PI, 2*M_PI) - M_PI;
-	
+	#pragma omp parallel for
 	for(int i = 0; i < mRangeCount; i++)
 	{
 		if(scan->ranges[i] <= scan->range_min)

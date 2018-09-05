@@ -72,6 +72,7 @@ private:
 	karto::SmartPointer<karto::OpenMapper> mMapper;
 	std::map<int, karto::LaserRangeFinderPtr> mOtherLasers;
 	bool mMapChanged;
+	bool mOutRequest;
 
 	// Parameters and Variables
 	int mRobotID;               // Who am I?
