@@ -2,8 +2,8 @@
 
 #define LEFT 0
 #define RIGHT 1
-#define LIFT_UP_PIN 3
-#define LIFT_DOWN_PIN 4
+#define LIFT_UP_PIN 4
+#define LIFT_DOWN_PIN 3
 #define LED_PIN_LEFT 8
 #define LED_PIN_RIGHT 9
 
@@ -380,10 +380,10 @@ void controlMotorSpeed(float goalLinearVel, float goalAngularVel) {
    Lift
 *******************************************************************************/
 void liftCmdCallback(const std_msgs::UInt8& lift_cmd_msg) {
-  delay(10);
+  delay(100);
   digitalWrite(LIFT_UP_PIN, LOW);
   digitalWrite(LIFT_DOWN_PIN, LOW);
-  delay(10);
+  delay(1000);
   switch (lift_cmd_msg.data) {
     case 1:         //up
       digitalWrite(LIFT_UP_PIN, HIGH);
