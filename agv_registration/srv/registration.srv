@@ -1,8 +1,0 @@
-int8 action
-# 0 : for auto-charge.
-# 1 : for liftting up( outside shelf ).
-# 2 : for liffting up( under shelf ).
----
-bool result
-# true : registration success.
-# false : registration failure.

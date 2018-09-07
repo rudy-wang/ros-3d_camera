@@ -34,7 +34,7 @@
   <xacro:include filename="$(find sick_tim)/urdf/sick_tim.urdf.xacro" />
 
   <!--xacro:sick_tim310 name="base_laser_link" ros_topic="scan" /-->
-  <xacro:sick_tim name="laser" ros_topic="scan" length="0.06" width="0.06" height="0.086" mass="0.250" z_offset="0.06296" min_range="0.05" max_range="10.0" mesh="file://$(find sick_tim)/meshes/sick_tim551.stl"/>
+  <xacro:sick_tim name="laser" ros_topic="scan" length="0.06" width="0.06" height="0.086" mass="0.250" z_offset="0.06296" min_angle="-2.357" max_angle="2.357" min_range="0.05" max_range="10.0" mesh="file://$(find sick_tim)/meshes/sick_tim551.stl"/>
 
 </robot>
 
