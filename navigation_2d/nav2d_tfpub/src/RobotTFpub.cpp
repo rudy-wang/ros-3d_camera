@@ -11,9 +11,9 @@ RobotTFpub::RobotTFpub()
 	// Create the local costmap
 	// Publish / subscribe to ROS topics
 	ros::NodeHandle robotNode;
-	mSensorSubscriber = robotNode.subscribe(SENSOR_TOPIC, 1, &RobotTFpub::receiveSensor, this);
-	mOdom_pub = robotNode.advertise<nav_msgs::Odometry>("odom", 5);
-	mJoint_states_pub = robotNode.advertise<sensor_msgs::JointState>("joint_states", 5);
+	mSensorSubscriber = robotNode.subscribe(SENSOR_TOPIC, 5, &RobotTFpub::receiveSensor, this);
+	mOdom_pub = robotNode.advertise<nav_msgs::Odometry>("odom", 10);
+	mJoint_states_pub = robotNode.advertise<sensor_msgs::JointState>("joint_states", 10);
 
 	mJoint_states_name[0] = "wheel_left_joint";
 	mJoint_states_name[1] = "wheel_right_joint";
@@ -48,7 +48,7 @@ RobotTFpub::RobotTFpub()
 	mOdom_vel[0] = 0.0;
 	mOdom_vel[1] = 0.0;
 	mOdom_vel[2] = 0.0;
-	mPrev_update_time = 0.0;
+	mPrev_update_time = ros::Time::now().toSec();
 	mInit_encoder = true;
 }
 
@@ -193,11 +193,11 @@ bool RobotTFpub::calcOdometry(double diff_time, double theta)
 
 void RobotTFpub::publishDriveInformation(int32_t theta)
 {
-	double time_now = ros::Time::now().toSec();
+	ros::Time stamp_now = ros::Time::now();
+	double time_now = stamp_now.toSec();
 	double step_time = time_now - mPrev_update_time;
 
 	mPrev_update_time = time_now;
-	ros::Time stamp_now = ros::Time::now();
 
 	// calculate odometry
 	calcOdometry((double)(step_time), (double)theta/100000.0);

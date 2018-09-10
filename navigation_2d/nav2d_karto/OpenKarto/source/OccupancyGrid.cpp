@@ -134,7 +134,7 @@ namespace karto
 
     karto_const_forEach(LocalizedLaserScanList, &rScans)
     {
-      ROS_ERROR("AA: %d",AddScan(*iter));
+      AddScan(*iter);
     }
 
     UpdateGrid();
@@ -295,7 +295,7 @@ namespace karto
     kt_int32u* pCellHitCntPtr = m_pCellHitsCnt->GetDataPointer();
 
     kt_int32u nBytes = GetDataSize();
-	ROS_ERROR("UpdateGrid");
+
     for (kt_int32u i = 0; i < nBytes; i++, pDataPtr++, pCellPassCntPtr++, pCellHitCntPtr++)
     {
       UpdateCell(pDataPtr, *pCellPassCntPtr, *pCellHitCntPtr);

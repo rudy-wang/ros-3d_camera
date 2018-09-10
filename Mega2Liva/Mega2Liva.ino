@@ -173,8 +173,8 @@ void loop() {
   }
   if (!nh.connected())
   {
-    lin_vel1 = 2500;
-    lin_vel2 = 2500;
+    lin_vel1 = 0;
+    lin_vel2 = 0;
     sendCmd();
     digitalWrite(53, LOW);
     delay(1);
@@ -383,7 +383,7 @@ void liftCmdCallback(const std_msgs::UInt8& lift_cmd_msg) {
   delay(100);
   digitalWrite(LIFT_UP_PIN, LOW);
   digitalWrite(LIFT_DOWN_PIN, LOW);
-  delay(1000);
+  delay(2000);
   switch (lift_cmd_msg.data) {
     case 1:         //up
       digitalWrite(LIFT_UP_PIN, HIGH);

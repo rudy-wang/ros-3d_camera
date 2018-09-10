@@ -3,8 +3,6 @@
 	<param name="use_sim_time" value="false" />
 
 	<node name="ToArduino" pkg="rosserial_python" type="serial_node.py" output="screen" />
-  	<param name="robot_description" command="$(find xacro)/xacro '$(find nav2d_run)/param/UAGV.urdf.xacro'" />
-	<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
 	
 	<!-- ====== Start SICK LIDAR ====== -->
 
@@ -37,6 +35,8 @@
 	        <param name="timelimit" type="int" value="2" />
 	</node>
 	<!-- ================================ -->
+  	<param name="robot_description" command="$(find xacro)/xacro '$(find nav2d_run)/param/UAGV.urdf.xacro'" />
+	<node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
 
 	<!-- Some general parameters -->
 	<rosparam file="$(find nav2d_run)/param/ros.yaml"/>
@@ -59,6 +59,8 @@
 	<!-- Start the Navigator to move the robot autonomously -->
 	<node name="Navigator" pkg="nav2d_navigator" type="navigator">
 		<rosparam file="$(find nav2d_run)/param/navigator.yaml"/>
+		<remap from="odom" to="map_odom"/>
+		<remap from="offset" to="map_offset"/>
 	</node>
 
 	<node name="GetMap" pkg="nav2d_navigator" type="get_map_client" />

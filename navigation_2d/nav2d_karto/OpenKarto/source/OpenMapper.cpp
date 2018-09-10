@@ -294,7 +294,6 @@ namespace karto
 
   void MapperSensorManager::AddLocalizedObject(LocalizedObject* pObject)
   {
-ROS_ERROR("add obj");
     GetSensorDataManager(pObject)->AddObject(pObject, m_pMapperSensorManagerPrivate->m_NextUniqueId);
     m_pMapperSensorManagerPrivate->m_Objects.Add(pObject);
     m_pMapperSensorManagerPrivate->m_NextUniqueId++;

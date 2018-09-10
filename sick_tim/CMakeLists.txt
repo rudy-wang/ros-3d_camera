@@ -8,6 +8,7 @@ find_package(catkin REQUIRED
       roscpp
       roslaunch
       sensor_msgs
+      std_srvs
 )
 
 find_package(PkgConfig REQUIRED)

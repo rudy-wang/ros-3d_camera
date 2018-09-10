@@ -342,7 +342,6 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 		
 		if(success)
 		{
-			ROS_ERROR("success");
 			// Compute the map->odom transform
 			karto::Pose2 corrected_pose = laserScan->GetCorrectedPose();
 			tf::Pose map_in_robot(tf::createQuaternionFromYaw(corrected_pose.GetHeading()), tf::Vector3(corrected_pose.GetX(), corrected_pose.GetY(), 0.0));
@@ -351,7 +350,7 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 			bool ok = true;
 			try
 			{
-				mTransformListener.transformPose(mOffsetFrame, tf::Stamped<tf::Pose>(map_in_robot, ros::Time(0) /*scan->header.stamp*/, mLaserFrame), map_in_odom);
+				mTransformListener.transformPose(mOffsetFrame, tf::Stamped<tf::Pose>(map_in_robot, scan->header.stamp, mLaserFrame), map_in_odom);
 			}
 			catch(tf::TransformException e)
 			{
@@ -513,7 +512,6 @@ bool MultiMapper::updateMap()
 		mGridMap.info.height = height;
 		mGridMap.data.resize(mGridMap.info.width * mGridMap.info.height);
 	}
-			ROS_ERROR("update");
 	#pragma omp parallel for
 	for (unsigned int y = 0; y < height; y++)
 	{

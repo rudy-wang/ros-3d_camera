@@ -104,7 +104,9 @@ private:
 	double* mCurrentPlan;
 
 	double mInflationRadius;
+	double mInitRobotRadius;
 	double mRobotRadius;
+	double mCargoRadius;
 	unsigned int mCellInflationRadius;
 	unsigned int mCellRobotRadius;
 	unsigned int mLiftStatus;

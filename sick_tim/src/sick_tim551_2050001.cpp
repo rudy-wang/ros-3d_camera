@@ -37,11 +37,32 @@
 #include <sick_tim/sick_tim_common_tcp.h>
 #include <sick_tim/sick_tim_common_mockup.h>
 #include <sick_tim/sick_tim551_2050001_parser.h>
+#include <std_srvs/Trigger.h>
+
+sick_tim::SickTimCommon* s;
+sick_tim::SickTim5512050001Parser* parser;
+
+bool receiveRangeUpdate(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
+{
+  	ros::NodeHandle nhPriv("~");
+	double param;
+	if (nhPriv.getParam("range_min", param))
+  	{
+		parser->set_range_min(param);
+	}
+	res.success = true;
+	res.message = "Update laser range.";
+	return true;
+}
 
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "sick_tim551_2050001");
   ros::NodeHandle nhPriv("~");
+  ros::ServiceServer updateServer = nhPriv.advertiseService("updateLaserRange", &receiveRangeUpdate);
+
+  s = NULL;
+  parser = new sick_tim::SickTim5512050001Parser();
 
   // check for TCP - use if ~hostname is set.
   bool useTCP = false;
@@ -60,7 +81,6 @@ int main(int argc, char **argv)
   nhPriv.param("subscribe_datagram", subscribe_datagram, false);
   nhPriv.param("device_number", device_number, 0);
 
-  sick_tim::SickTim5512050001Parser* parser = new sick_tim::SickTim5512050001Parser();
 
   double param;
   if (nhPriv.getParam("range_min", param))
@@ -76,7 +96,6 @@ int main(int argc, char **argv)
     parser->set_time_increment(param);
   }
 
-  sick_tim::SickTimCommon* s = NULL;
 
   int result = sick_tim::ExitError;
   while (ros::ok())
