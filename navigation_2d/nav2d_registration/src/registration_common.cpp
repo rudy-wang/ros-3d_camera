@@ -97,7 +97,7 @@ int LaserMsgLite::size(){ return ranges.size(); }
 
 Registration::Registration()
 {
-	status_ = 0;
+	status_ = REG_ST_WORKING;
 	failcounter = 0;
 	surcounter = 0;
 }
@@ -113,7 +113,7 @@ int Registration::action(){ return action_; }
 bool Registration::roundCheck(){ return surcounter >= 4; }
 void Registration::reset()
 {
-	status_ = 0;
+	status_ = REG_ST_WORKING;
 	failcounter = 0;
 	surcounter = 0;
 }
@@ -123,11 +123,33 @@ void Registration::initSurrRef()
 }
 void Registration::confirmed()
 {
-	status_ = 1;
+	status_ = REG_ST_SUCCEED;
 }
 void Registration::aborted()
 {
-	status_ = 2;
+	status_ = REG_ST_FAILED;
+}
+
+void Registration::moveOut( double last_orientation, double &add_x, double &add_y, double &goal_orientation, double &new_angle )
+{
+	double moveRange = 1.5;
+	double rotateAngle = 0;
+	double orientation = 0;
+	new_angle = 0;
+	status_ = REG_ST_WORKING;
+	if(laserCluster.size() == 1)
+	{
+		rotateAngle = laserCluster[ 0 ].mean_angle() + 45;
+	}
+	else if(laserCluster.size() == 2)
+	{
+		rotateAngle = (laserCluster[ 0 ].mean_angle() + laserCluster[ 1 ].mean_angle()) / 2;
+	}
+	
+	new_angle = last_orientation + rotateAngle * ( PI / 180 );
+	add_x = moveRange * cos( new_angle );
+	add_y = moveRange * sin( new_angle );
+	goal_orientation = last_orientation + orientation * ( PI / 180 );
 }
 
 void Registration::regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &goal_orientation, double &new_angle )
@@ -136,7 +158,7 @@ void Registration::regLiftupOutside( double last_orientation, double &add_x, dou
 	double rotateAngle = 0;
 	double orientation = 0;
 	new_angle = 0;
-	status_ = 0;
+	status_ = REG_ST_WORKING;
 	
 	if( failcounter >= 30 )
 	{
@@ -164,7 +186,7 @@ void Registration::regLiftupUnder( double last_orientation, double &add_x, doubl
 	double rotateAngle = 0;
 	double orientation = 0;
 	new_angle = 0;
-	status_ = 0;
+	status_ = REG_ST_WORKING;
 	
 	if( centerCheck( laserCluster, surrRef, moveRange, rotateAngle, orientation, surcounter, failcounter ) )
 	{
@@ -176,7 +198,7 @@ void Registration::regLiftupUnder( double last_orientation, double &add_x, doubl
 			{
 				reset();
 				initSurrRef();
-				status_ = 2;
+				status_ = REG_ST_FAILED;
 				return;
 			}
 		}
@@ -186,7 +208,7 @@ void Registration::regLiftupUnder( double last_orientation, double &add_x, doubl
 	{
 		reset();
 		initSurrRef();
-		status_ = 2;
+		status_ = REG_ST_FAILED;
 		ROS_ERROR( "Number of errors has reached the limit." );
 		return;
 	}

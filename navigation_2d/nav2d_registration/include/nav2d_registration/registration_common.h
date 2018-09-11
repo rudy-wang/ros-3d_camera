@@ -44,6 +44,7 @@ class Registration
 		void aborted();
 		bool roundCheck();
 		void clustering();
+		void moveOut( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
 		void regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
 		void regLiftupUnder( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
 		

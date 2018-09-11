@@ -8,8 +8,8 @@
 #define STAT_RAN	0.03			// define UAGV is under a static motion when its moving range lower than this threshold.
 #define STAT_ORN	3			// define UAGV is under a static motion when its moving oriention lower than this threshold.
 #define PT_PER_M	5			// filter out noisy clusters having less points than this threshold.
-#define ANG_DIFF	2			// a new cluster will be created if the angles between points are wider than this threshold.
-#define RAN_DIFF	0.02			// a new cluster will be created if the ranges between points are further than this threshold.
+#define ANG_DIFF	10			// a new cluster will be created if the angles between points are wider than this threshold.
+#define RAN_DIFF	0.1			// a new cluster will be created if the ranges between points are further than this threshold.
 #define THRES		233			// points are detected as reflection plate when their intensities are higher than this threshold.
 #define PI		3.14159265		// pi is just pi
 #define REG_ST_WORKING	0
@@ -18,6 +18,7 @@
 #define REG_ACT_MOVE	0
 #define REG_ACT_OUTSIDE	1
 #define REG_ACT_UNDER	2
+#define REG_ACT_FINISH	3
 
 bool isNewCluster( double input_angle, double input_range, std::vector< LaserMsgLite > &refClstr, double thre1, double thre2 )
 {
@@ -79,7 +80,7 @@ bool squareCheck( std::vector< LaserMsgLite > &refClstr, std::vector< std::vecto
 
 bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, double &moveRange, double &rotateAngle, double &orientation, int &counter )
 {
-	if( refClstr.size() < 2 && refClstr.size() > 4 )
+	if( refClstr.size() < 2 || refClstr.size() > 4 )
 	{
 		counter++;
 		if( refClstr.size() == 0 )

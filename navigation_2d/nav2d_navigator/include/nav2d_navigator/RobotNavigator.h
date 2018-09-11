@@ -119,8 +119,10 @@ private:
 	double mNavigationGoalAngle;
 	double mNavigationHomingDistance;
 	double mExplorationGoalDistance;
+	double mRegNavGoalDistance;
 	double mRegistrationGoalDistance;
 	double mRegistrationGoalAngle;
 	double mMinReplanningPeriod;
 	double mMaxReplanningPeriod;
+	double mSlightRate;
 };

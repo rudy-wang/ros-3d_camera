@@ -30,7 +30,6 @@
 #define NAV_ST_EXPLORING	4
 #define NAV_ST_WAITING		5
 #define NAV_ST_RECOVERING	6
-#define REG_SLIGHT_RATE		3.0
 #define LIFT_ERROR		0
 #define LIFT_UP			1
 #define LIFT_DOWN		2
