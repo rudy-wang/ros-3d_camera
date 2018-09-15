@@ -2,11 +2,12 @@
 #map_inflation_radius: 0.9
 #robot_radius: 0.6
 map_inflation_radius: 0.9
-robot_radius: 0.5
-cargo_radius: 0.80
-min_replanning_period: 3.0
+robot_radius: 0.57
+cargo_radius: 0.88
+min_replanning_period: 2.0
 max_replanning_period: 1.0
 laser_topic: scan
+ls_range_min: 0.002
 
 # Tolerance in target position for MoveToPosition2D (meter)
 navigation_goal_distance: 0.1
@@ -15,19 +16,19 @@ navigation_goal_distance: 0.1
 navigation_goal_angle: 0.1
 
 # Tolerance in target position for MoveToPosition2D before Registration (meter)
-regnav_goal_distance: 1.5
+regnav_goal_distance: 1.0
 
 # Tolerance in target position for Registration (meter)
 registration_goal_distance: 0.01
 
 # Toleranvce in target heading for Registration (radians)
-registration_goal_angle: 0.0015
+registration_goal_angle: 0.02
 
 # Distance at which to turn off obstacle avoidance (meter)
 navigation_homing_distance: 0.3
 
 # Rate for slight tunning (Hz)
-slight_tunning_rate: 4.0
+slight_tunning_rate: 3.0
 
 # Find new exploartion target when in range of current one (meter)
 exploration_goal_distance: 1.0

@@ -38,9 +38,11 @@
 #include <sick_tim/sick_tim_common_mockup.h>
 #include <sick_tim/sick_tim551_2050001_parser.h>
 #include <std_srvs/Trigger.h>
+#include <std_srvs/SetBool.h>
 
 sick_tim::SickTimCommon* s;
 sick_tim::SickTim5512050001Parser* parser;
+bool filter;
 
 bool receiveRangeUpdate(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
@@ -49,9 +51,23 @@ bool receiveRangeUpdate(std_srvs::Trigger::Request &req, std_srvs::Trigger::Resp
 	if (nhPriv.getParam("range_min", param))
   	{
 		parser->set_range_min(param);
+		res.success = true;
+		res.message = "Updating laser range succeed.";
+		return true;
 	}
+	else
+	{
+		res.success = false;
+		res.message = "Updating laser range failed.";
+		return false;
+	}
+}
+
+bool receiveFiletrSwitch(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res)
+{
+  	filter = req.data;
 	res.success = true;
-	res.message = "Update laser range.";
+	res.message = "Switch filter status.";
 	return true;
 }
 
@@ -60,7 +76,8 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "sick_tim551_2050001");
   ros::NodeHandle nhPriv("~");
   ros::ServiceServer updateServer = nhPriv.advertiseService("updateLaserRange", &receiveRangeUpdate);
-
+  ros::ServiceServer switchServer = nhPriv.advertiseService("scanFilterSwitch", &receiveFiletrSwitch);
+  filter = false;
   s = NULL;
   parser = new sick_tim::SickTim5512050001Parser();
 
@@ -111,7 +128,7 @@ int main(int argc, char **argv)
 
     while(ros::ok() && (result == sick_tim::ExitSuccess)){
       ros::spinOnce();
-      result = s->loopOnce();
+      result = s->loopOnce(filter);
     }
 
     delete s;

@@ -16,9 +16,19 @@ bool receiveLiftUp(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response 
 	goal.cmd = true;
 	goal.target_status = 1;
 	gLiftClient->sendGoal(goal);
-	res.success = true;
-	res.message = "Send LiftUpGoal to Navigator.";
-	return true;
+	gLiftClient->waitForResult();
+	if (gLiftClient->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+	{
+		res.success = true;
+		res.message = "Sending LiftUpGoal to motor succeed.";
+		return true;
+	}
+	else
+	{
+		res.success = false;
+		res.message = "Sending LiftUpGoal to motor failed.";
+		return false;
+	}
 }
 bool receiveLiftDown(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
@@ -26,9 +36,19 @@ bool receiveLiftDown(std_srvs::Trigger::Request &req, std_srvs::Trigger::Respons
 	goal.cmd = true;
 	goal.target_status = 2;
 	gLiftClient->sendGoal(goal);
-	res.success = true;
-	res.message = "Send LiftDownGoal to Navigator.";
-	return true;
+	gLiftClient->waitForResult();
+	if (gLiftClient->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+	{
+		res.success = true;
+		res.message = "Sending LiftDownGoal to motor succeed.";
+		return true;
+	}
+	else
+	{
+		res.success = false;
+		res.message = "Sending LiftDownGoal to motor failed.";
+		return false;
+	}
 }
 bool receiveLiftHalt(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
@@ -36,9 +56,19 @@ bool receiveLiftHalt(std_srvs::Trigger::Request &req, std_srvs::Trigger::Respons
 	goal.cmd = true;
 	goal.target_status = 3;
 	gLiftClient->sendGoal(goal);
-	res.success = true;
-	res.message = "Send LiftHaltGoal to Navigator.";
-	return true;
+	gLiftClient->waitForResult();
+	if (gLiftClient->getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+	{
+		res.success = true;
+		res.message = "Sending LiftHaltGoal to motor succeed.";
+		return true;
+	}
+	else
+	{
+		res.success = false;
+		res.message = "Sending LiftHaltGoal to motor failed.";
+		return false;
+	}
 }
 
 void receiveLiftStatus(const std_msgs::UInt8::ConstPtr& msg)

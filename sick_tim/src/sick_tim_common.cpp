@@ -287,7 +287,7 @@ bool sick_tim::SickTimCommon::isCompatibleDevice(const std::string identStr) con
   return true;
 }
 
-int SickTimCommon::loopOnce()
+int SickTimCommon::loopOnce(bool filter)
 {
   diagnostics_.update();
 
@@ -328,7 +328,7 @@ int SickTimCommon::loopOnce()
     size_t dlength = dend - dstart;
     *dend = '\0';
     dstart++;
-    int success = parser_->parse_datagram(dstart, dlength, config_, msg);
+    int success = parser_->parse_datagram(dstart, dlength, config_, msg, filter);
     if (success == ExitSuccess)
       diagnosticPub_->publish(msg);
     buffer_pos = dend + 1;

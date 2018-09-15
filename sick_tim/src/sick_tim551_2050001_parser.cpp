@@ -34,7 +34,15 @@
 
 #include <sick_tim/sick_tim551_2050001_parser.h>
 
+#include <omp.h>
 #include <ros/ros.h>
+
+double calcEucDistance( double refR1, double refA1, double refR2, double refA2 )
+{
+	double angDiff = fabs( refA1 - refA2 );
+	angDiff = ( angDiff > 3.1415926 ? 6.2831852 - angDiff : angDiff );
+	return sqrt( pow( refR1, 2 ) + pow( refR2, 2 ) - 2 * refR1 * refR2 * cos( angDiff ) );
+}
 
 namespace sick_tim
 {
@@ -52,7 +60,7 @@ SickTim5512050001Parser::~SickTim5512050001Parser()
 }
 
 int SickTim5512050001Parser::parse_datagram(char* datagram, size_t datagram_length, SickTimConfig &config,
-                                     sensor_msgs::LaserScan &msg)
+                                     sensor_msgs::LaserScan &msg, bool filter)
 {
   static const size_t HEADER_FIELDS = 33;
   char* cur_field;
@@ -236,6 +244,7 @@ int SickTim5512050001Parser::parse_datagram(char* datagram, size_t datagram_leng
 
   // 26..26 + n - 1: Data_1 .. Data_n
   msg.ranges.resize(index_max - index_min + 1);
+  #pragma omp parallel for
   for (int j = index_min; j <= index_max; ++j)
   {
     unsigned short range;
@@ -264,11 +273,32 @@ int SickTim5512050001Parser::parse_datagram(char* datagram, size_t datagram_leng
       //   <ETX> (\x03)
       msg.intensities.resize(index_max - index_min + 1);
       size_t offset = 26 + number_of_data + 7;
+      #pragma omp parallel for
       for (int j = index_min; j <= index_max; ++j)
       {
         unsigned short intensity;
         sscanf(fields[j + offset], "%hx", &intensity);
         msg.intensities[j - index_min] = intensity;
+        if(intensity>233 && filter)
+        {
+          #pragma omp parallel for
+          for (int i = -20; i <= 20; i++)
+          {
+            int tmpIdx = j - index_min + i;
+            if(tmpIdx<0)
+            {
+              i -= tmpIdx;
+              tmpIdx = 0;
+            }
+            unsigned short tmpIntensity;
+            sscanf(fields[j + offset + i], "%hx", &tmpIntensity);
+            if(tmpIntensity<233)
+            {
+              if(calcEucDistance(msg.ranges[j - index_min],msg.angle_min+msg.angle_increment*(j - index_min),msg.ranges[tmpIdx],msg.angle_min+msg.angle_increment*(tmpIdx))<0.55)
+                msg.ranges[tmpIdx] = std::numeric_limits<float>::infinity();
+            }
+          }
+        }
       }
     } else {
       ROS_WARN_ONCE("Intensity parameter is enabled, but the scanner is not configured to send RSSI values! "

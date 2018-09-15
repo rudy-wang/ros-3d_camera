@@ -3,7 +3,19 @@
 
 #include "system_base.h"
 #include "ros_msg.h"
-
+class LSPoint
+{
+	public:
+		LSPoint();
+		LSPoint(double x_, double y_)
+		{
+			x = x_;
+			y = y_;
+		}
+		~LSPoint(){};
+		double x;
+		double y;
+};
 class LaserMsgLite
 {
 	public:
@@ -44,15 +56,15 @@ class Registration
 		void aborted();
 		bool roundCheck();
 		void clustering();
-		void moveOut( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
-		void regLiftupOutside( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
-		void regLiftupUnder( double last_orientation, double &add_x, double &add_y, double &add_orientation, double &new_angle );
+		void moveOut(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
+		void regLiftupOutside(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y);
+		void regLiftupUnder(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
 		
 		ros::NodeHandle nh_sta;
 		static ros::Subscriber sub_sta;
 		static std::vector< LaserMsgLite > laserCluster;
 		static LaserMsgLite laserBuffer;
-		static LaserMsgLite surrRef;
+		static std::vector<LSPoint> surrRef;
 	private:
 		static sensor_msgs::LaserScan msg;
 		static int action_;

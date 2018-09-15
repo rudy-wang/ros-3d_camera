@@ -49,7 +49,7 @@ SickTim3101130000M01Parser::~SickTim3101130000M01Parser()
 }
 
 int SickTim3101130000M01Parser::parse_datagram(char* datagram, size_t datagram_length, SickTimConfig &config,
-                                     sensor_msgs::LaserScan &msg)
+                                     sensor_msgs::LaserScan &msg, bool filter)
 {
   static const size_t NUM_FIELDS = 124;
   char* fields[NUM_FIELDS];

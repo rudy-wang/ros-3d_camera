@@ -1,7 +1,7 @@
 #include <ros/ros.h>
 #include <actionlib/client/simple_action_client.h>
 #include <nav2d_navigator/RegistrationAction.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PointStamped.h>
 #include <tf/transform_datatypes.h>
 #include <nav2d_registration/RegService.h>
 
@@ -23,15 +23,15 @@ void receiveLoadCommand(const geometry_msgs::PointStamped::ConstPtr& msg)
 	gRegistrationClient->sendGoal(goal);
 }
 
-void receiveUnloadCommand(const geometry_msgs::PoseStamped::ConstPtr& msg)
+void receiveUnloadCommand(const geometry_msgs::PointStamped::ConstPtr& msg)
 {
 	nav2d_navigator::RegistrationGoal goal;
-	goal.target_pose.x = msg->pose.position.x;
-	goal.target_pose.y = msg->pose.position.y;
-	goal.target_pose.theta = tf::getYaw(msg->pose.orientation);
+	goal.target_pose.x = msg->point.x;
+	goal.target_pose.y = msg->point.y;
+	goal.target_pose.theta = 0;
 	goal.action = 0;
-	goal.target_distance = 0;
-	goal.target_angle = 0;
+	goal.target_distance = 0.1;
+	goal.target_angle = 3.1415926;
 	gRegistrationClient->sendGoal(goal);
 }
 

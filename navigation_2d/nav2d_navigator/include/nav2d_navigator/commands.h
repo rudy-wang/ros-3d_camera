@@ -20,8 +20,6 @@
 #define NAV_GETMAP_ACTION		"GetFirstMap"
 #define NAV_LOCALIZE_ACTION		"Localize"
 #define LS_NODE				"/sick_tim571_2050101"
-#define LS_UPDATE_SERVICE		"updateLaserRange"
-#define LS_MIN_RANGE			0.002
 
 #define NAV_ST_IDLE		0
 #define NAV_ST_NAVIGATING	1

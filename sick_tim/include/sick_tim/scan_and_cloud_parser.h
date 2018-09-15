@@ -50,7 +50,7 @@ public:
                              sensor_msgs::LaserScan &scan, sensor_msgs::PointCloud2 &cloud) = 0;
 
   virtual int parse_datagram(char* datagram, size_t datagram_length, SickTimConfig &config,
-                             sensor_msgs::LaserScan &msg);
+                             sensor_msgs::LaserScan &msg, bool filter = false);
 
 };
 

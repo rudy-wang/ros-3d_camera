@@ -55,7 +55,7 @@ public:
   virtual ~AbstractParser();
 
   virtual int parse_datagram(char* datagram, size_t datagram_length, SickTimConfig &config,
-                             sensor_msgs::LaserScan &msg) = 0;
+                             sensor_msgs::LaserScan &msg, bool filter = false) = 0;
 };
 
 } /* namespace sick_tim */

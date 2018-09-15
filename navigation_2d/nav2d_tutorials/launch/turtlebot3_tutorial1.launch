@@ -1,0 +1,25 @@
+<launch>
+
+	<!-- Some general parameters -->
+	<param name="use_sim_time" value="false" />
+	<rosparam file="$(find nav2d_tutorials)/param/ros.yaml"/>
+	
+    <arg name="model" default="$(env TURTLEBOT3_MODEL)" doc="model type [burger, waffle]"/>
+    
+    <node name="fix_tf_tree" pkg="tf" type="static_transform_publisher" args="0 0 10 0 0 0 base_footprint base_link 50" />
+
+	<!-- Start the Operator to control the simulated robot -->
+	<node name="Operator" pkg="nav2d_operator" type="operator" >
+	    <remap from="base_scan" to="scan" />
+		<rosparam file="$(find nav2d_tutorials)/param/operator.yaml"/>
+	    <rosparam file="$(find nav2d_tutorials)/param/costmap.yaml" ns="local_map" />
+	    <param name="robot_frame" value="base_footprint" />
+	    <param name="odometry_frame" value="odom" />
+	</node>
+
+	<include file="$(find turtlebot3_bringup)/launch/turtlebot3_remote.launch"/>
+	<include file="$(find turtlebot3_teleop)/launch/turtlebot3_teleop_key.launch"/>
+
+
+
+</launch>

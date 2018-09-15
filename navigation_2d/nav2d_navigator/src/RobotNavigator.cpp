@@ -43,6 +43,7 @@ RobotNavigator::RobotNavigator()
 	navigatorNode.param("map_inflation_radius", mInflationRadius, 1.0);
 	navigatorNode.param("robot_radius", mRobotRadius, 0.5);
 	navigatorNode.param("cargo_radius", mCargoRadius, 0.78);
+	navigatorNode.param("ls_range_min", mInitLSRad, 0.002);
 	navigatorNode.param("exploration_strategy", mExplorationStrategy, std::string("NearestFrontierPlanner"));
 	navigatorNode.param("navigation_goal_distance", mNavigationGoalDistance, 1.0);
 	navigatorNode.param("navigation_goal_angle", mNavigationGoalAngle, 1.0);
@@ -51,7 +52,7 @@ RobotNavigator::RobotNavigator()
 	navigatorNode.param("registration_goal_distance", mRegistrationGoalDistance, 0.015);
 	navigatorNode.param("registration_goal_angle", mRegistrationGoalAngle, 0.003);
 	navigatorNode.param("navigation_homing_distance", mNavigationHomingDistance, 3.0);
-	navigatorNode.param("min_replanning_period", mMinReplanningPeriod, 3.0);
+	navigatorNode.param("min_replanning_period", mMinReplanningPeriod, 2.0);
 	navigatorNode.param("max_replanning_period", mMaxReplanningPeriod, 1.0);
 	navigatorNode.param("slight_tunning_rate", mSlightRate, 3.0);
 	navigatorNode.param("static_map", mStaticMap, false);
@@ -112,10 +113,28 @@ RobotNavigator::RobotNavigator()
 	{
 		mGetMapActionServer = NULL;
 	}
+	mSensorX = 0;
+	mEnlargedLSRad = 0;
+	StampedTransform Ltransform;
+	try
+	{
+		mTfListener.lookupTransform(mRobotFrame, mLaserFrame, Time(0), Ltransform);
+	}
+	catch(TransformException ex)
+	{
+		ROS_ERROR("Could not get laser sensor position: %s", ex.what());
+		mCellInflationRadius = 0;
+		mRobotRadius = mInitRobotRadius;
+		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
+		return;
+	}
+	mSensorX = Ltransform.getOrigin().x();
+	mEnlargedLSRad = sqrt(pow(sqrt(2)*0.5*mCargoRadius-mSensorX,2)+pow(sqrt(2)*0.5*mCargoRadius,2));
 	
 	mHasNewMap = false;
 	mIsStopped = false;
 	mIsPaused = false;
+	mShortestPlan = false;
 	mLiftStatus = LIFT_HALT;
 	mStatus = NAV_ST_IDLE;
 	mCellInflationRadius = 0;
@@ -316,20 +335,24 @@ bool RobotNavigator::createPlan()
 		ind.push_back(index - mCurrentMap.getWidth() + 1);
 		ind.push_back(index + mCurrentMap.getWidth() - 1);
 		ind.push_back(index + mCurrentMap.getWidth() + 1);
-		double tlinear = 10 * sqrt( linear / (double)mCostObstacle );
-		double tdiagonal = 10 * sqrt( diagonal / (double)mCostObstacle );
+		double tlinear = 10 * sqrt(sqrt( linear / (double)mCostObstacle ));
+		double tdiagonal = 10 * sqrt(sqrt( diagonal / (double)mCostObstacle ));
 		#pragma omp parallel for shared(mCurrentPlan)
 		for(unsigned int it = 0; it < ind.size(); it++)
 		{
 			unsigned int i = ind[it];
-			if(mCurrentMap.isFree(i) || (mStatus == NAV_ST_REGISTRATION && mCurrentMap.getData(i)>=0))
+			if(mCurrentMap.getData(i) >= 0)//mCurrentMap.isFree(i) || (mStatus == NAV_ST_REGISTRATION && mCurrentMap.getData(i)>=0))
 			{
 				double delta = (it < 4) ? linear : diagonal;
 				double newDistance;
-				if(mStatus == NAV_ST_REGISTRATION)
+				if(mShortestPlan)
+				{
+					newDistance = distance + delta;
+				}
+				else if(!mShortestPlan && mStatus == NAV_ST_REGISTRATION)
 				{
 					double tdelta = (it < 4) ? tlinear : tdiagonal;
-					newDistance = distance + delta + (tdelta * sqrt( (double)mCurrentMap.getData(i)));
+					newDistance = distance + delta + (tdelta * sqrt(sqrt( (double)mCurrentMap.getData(i))));
 				}
 				else
 				{
@@ -481,6 +504,13 @@ void RobotNavigator::stop()
 	mStatus = NAV_ST_IDLE;
 	mIsPaused = false;
 	mIsStopped = false;
+	mShortestPlan = false;
+	NodeHandle laserScan(LS_NODE);
+	ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
+	std_srvs::SetBool srv;
+	srv.request.data = false;
+	switchclient.call(srv);
+	laserScan.shutdown();
 }
 
 bool RobotNavigator::generateCommand()
@@ -565,19 +595,18 @@ bool RobotNavigator::generateCommand()
 	else
 		msg.Mode = 1;
 	
-	if((mStatus == NAV_ST_REGISTRATION ? mCurrentPlan[mStartPoint] > 1.2 : mCurrentPlan[mStartPoint] > 1.0) || mCurrentPlan[mStartPoint] < 0)
+	if((mStatus == NAV_ST_REGISTRATION ? mCurrentPlan[mStartPoint] > 0.8 : mCurrentPlan[mStartPoint] > 0.5) || mCurrentPlan[mStartPoint] < 0)
 	{
 		msg.Velocity = 1.0;
 	}else
 	{
 		msg.Velocity = 0.5 + (mCurrentPlan[mStartPoint] / 2.0);
-		if(mStatus == NAV_ST_REGISTRATION)
+		if(mStatus == NAV_ST_REGISTRATION && mCurrentPlan[mStartPoint] < 0.5)
 		{
-			msg.Velocity = msg.Velocity * 0.7;
+			msg.Velocity = msg.Velocity * 0.3;
 		}
 	}
-	ROS_ERROR("T: %f",sqrt(pow(fabs((double)y - current_y),2)+pow(fabs((double)x - current_x),2))*mCurrentMap.getResolution());
-	if(sqrt(pow(fabs((double)y - current_y),2)+pow(fabs((double)x - current_x),2))*mCurrentMap.getResolution()<0.05 && abs(angle)<0.3)
+	if(sqrt(pow(fabs((double)y - current_y),2)+pow(fabs((double)x - current_x),2))*mCurrentMap.getResolution()<0.15 && abs(angle)<0.7)
 	{
 		Rate steprate = mSlightRate;
 		mCommandPublisher.publish(msg);
@@ -747,6 +776,9 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		ROS_ERROR("Unloading cargo failed, no cargo is loaded now.");
 		mRegistrationActionServer->setAborted();
 		stop();
+		mCellInflationRadius = 0;
+		mRobotRadius = mInitRobotRadius;
+		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
 		return;
 	}
 	if (goal->action == REG_ACT_MOVE)
@@ -766,7 +798,7 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	MoveGoal.target_pose.y = goal->target_pose.y;
 	MoveGoal.target_pose.theta = goal->target_pose.theta;
 	MoveGoal.target_distance = (goal->action == REG_ACT_MOVE ? mNavigationGoalDistance : mRegNavGoalDistance);
-	MoveGoal.target_angle = (goal->action == REG_ACT_MOVE ? mNavigationGoalAngle : PI);
+	MoveGoal.target_angle = PI;
 	
 	newMoveClient->sendGoal(MoveGoal);
 	newMoveClient->waitForResult();
@@ -776,13 +808,17 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		delete newMoveClient;
 		mRegistrationActionServer->setAborted();
 		stop();
+		mCellInflationRadius = 0;
+		mRobotRadius = mInitRobotRadius;
+		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
 		return;
 	}
+	delete newMoveClient;
+	stop();
+	sleep(1);
 	if (goal->action == REG_ACT_MOVE)
 	{
 		ROS_INFO("Goal reached. Cargo transport to destination.");
-		delete newMoveClient;
-		usleep(200000);
 		NodeHandle temp;
 		ServiceClient liftclient = temp.serviceClient<std_srvs::Trigger>(NAV_LIFTDOWN_SERVICE);
 		ServiceClient haltclient = temp.serviceClient<std_srvs::Trigger>(NAV_LIFTHALT_SERVICE);
@@ -790,28 +826,6 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		if(liftclient.call(srv))
 		{
 			ROS_INFO("Calling lift down service succeed.");
-			mCellInflationRadius = 0;
-			mRobotRadius = mInitRobotRadius;
-			mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
-
-			NodeHandle temp2(LS_NODE);
-			temp2.setParam("range_min", LS_MIN_RANGE);
-			ServiceClient updateclient = temp2.serviceClient<std_srvs::Trigger>(LS_UPDATE_SERVICE);
-			std_srvs::Trigger srv2;
-			if(updateclient.call(srv2))
-			{
-				ROS_INFO("Updating LaserScan range succeed.");
-			}
-			else
-			{
-				ROS_ERROR("Updating LaserScan range failed.");
-				temp.shutdown();
-				temp2.shutdown();
-				mRegistrationActionServer->setAborted();
-				return;
-			}
-			temp2.shutdown();
-			sleep(10);
 			if(haltclient.call(srv))
 			{
 				ROS_INFO("Lifting complete, and the power is suspended properly.");
@@ -853,9 +867,9 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	loopRate.sleep();
 	unsigned int cycle = 0;
 	unsigned int errcounter = 0;
-	bool reached = false, rightDir = true;
-	int recheckCycles = mMinReplanningPeriod * FREQUENCY, mapX, mapY, goalClstr = 0;
-	double target_x = 0, target_y = 0, goal_orientation = 0, new_angle = 0;
+	bool reached = false, rightDir = true, targetflag = false, straightRun = false;
+	int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY), mapX, mapY, goalClstr = 0;
+	double target_x = 0, target_y = 0, goal_orientation = 0, center_x = 0, center_y = 0;
 	
 	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mRegistrationGoalDistance;
 	double targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
@@ -867,12 +881,16 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		mHasNewMap = false;
 		if(!setCurrentPosition())
 		{
+			task.reset();
+			task.initSurrRef();
 			ROS_ERROR("Navigation failed, could not get current position.");
 			mRegistrationActionServer->setAborted();
 			stop();
 			return;
 		}
-		if( ( rightDir == true || ( task.action() == REG_ACT_OUTSIDE && task.laserCluster.size() > 2 ) ) && !task.roundCheck() )
+		if(task.laserCluster.size()==4)
+			targetflag = false;
+		if( ( rightDir == true || ( task.action() == REG_ACT_OUTSIDE && task.laserCluster.size() > 2 && !targetflag ) ) && !task.roundCheck() )
 		{
 			goalClstr = task.laserCluster.size();
 			ROS_ERROR("Set target, %d", goalClstr);
@@ -880,40 +898,36 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			{
 				case REG_ACT_MOVE:
 					//move out from the bottom of cargo when cargo has been transported;
-					task.moveOut( mCurrentDirection, target_x, target_y, goal_orientation, new_angle );
+					mShortestPlan = true;
+					targetAngle = PI;
+					task.moveOut( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation );
 					break;
 				case REG_ACT_OUTSIDE:
 					//outside shelf registration;
-					task.regLiftupOutside( mCurrentDirection, target_x, target_y, goal_orientation, new_angle );
+					targetAngle = 0.2;
+					if(goalClstr==4)
+						targetflag = true;
+					if(mShortestPlan && targetflag)
+					{
+						goal_orientation = mCurrentDirection;
+						target_x = center_x;
+						target_y = center_y;
+					}
+					else
+					{
+						task.regLiftupOutside( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation, center_x, center_y );
+					}
 					break;
 				case REG_ACT_UNDER:
 					//under shelf registration;
-					task.regLiftupUnder( mCurrentDirection, target_x, target_y, goal_orientation, new_angle );
+					targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
+					task.regLiftupUnder( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation );
 					break;
 				default:
 					ROS_ERROR( "Undefined registration request." );
 					break;
 			}
-			StampedTransform Ltransform;
-			try
-			{
-				mTfListener.lookupTransform(mRobotFrame, mLaserFrame, Time(0), Ltransform);
-			}
-			catch(TransformException ex)
-			{
-				ROS_ERROR("Could not get laser sensor position: %s", ex.what());
-				return;
-			}
-			if((target_x != 0 || target_y != 0) && task.action() == REG_ACT_OUTSIDE)
-			{
-				target_x = target_x + mCurrentPositionX + Ltransform.getOrigin().x() * cos( mCurrentDirection );
-				target_y = target_y + mCurrentPositionY + Ltransform.getOrigin().x() * sin( mCurrentDirection );
-			}
-			else
-			{
-				target_x = target_x + mCurrentPositionX;
-				target_y = target_y + mCurrentPositionY;
-			}
+			ROS_ERROR("X: %f, Y: %f, O: %f", target_x - mCurrentPositionX, target_y - mCurrentPositionY, mCurrentDirection - goal_orientation);
 			cycle = 0;
 			reached = false;
 			rightDir = false;
@@ -934,6 +948,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		if(!ok() || mRegistrationActionServer->isPreemptRequested() || mIsStopped)
 		{
 			ROS_INFO("Navigation has been preempted externally.");
+			task.reset();
+			task.initSurrRef();
 			mRegistrationActionServer->setPreempted();
 			stop();
 			return;
@@ -950,6 +966,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			if(!preparePlan())
 			{
 				ROS_ERROR("Prepare failed!");
+				task.reset();
+				task.initSurrRef();
 				mRegistrationActionServer->setAborted();
 				stop();
 				return;
@@ -974,8 +992,11 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 				errcounter++;
 				if( errcounter >= 10 ){
 					ROS_ERROR("Planning failed!");
+					task.reset();
+					task.initSurrRef();
 					mRegistrationActionServer->setAborted();
 					stop();
+					
 					return;
 				}
 				continue;
@@ -988,7 +1009,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		
 		// Are we already close enough?
 		double stopdis = (task.action() == REG_ACT_OUTSIDE ? 0.1 : targetDistance);
-		double disErr = sqrt(pow(fabs((double)(target_y - mCurrentPositionY)),2)+pow(fabs((double)(target_x - mCurrentPositionX)),2));
+		double disErr = sqrt(pow((double)(target_y - mCurrentPositionY),2)+pow((double)(target_x - mCurrentPositionX),2));
+		ROS_ERROR("disErr: %f",disErr);
 		if(!reached && disErr <= stopdis && mCurrentPlan[mStartPoint] >= 0)
 		{
 			ROS_INFO("Reached target, now turning to desired direction.");
@@ -997,10 +1019,15 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		
 		if(reached)
 		{
-			if( disErr > stopdis * 2 && task.roundCheck() )
+			if(task.roundCheck())
 			{
-				reached = false;
-				continue;
+				setCurrentPosition();
+				disErr = sqrt(pow((double)(target_y - mCurrentPositionY),2)+pow((double)(target_x - mCurrentPositionX),2));
+				if( disErr > stopdis)
+				{
+					reached = false;
+					continue;
+				}
 			}
 			// Are we also headed correctly?
 			double deltaTheta = mCurrentDirection - goal_orientation;
@@ -1008,7 +1035,7 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			while(deltaTheta >  PI) deltaTheta -= 2*PI;
 			double diff = (deltaTheta > 0) ? deltaTheta : -deltaTheta;
 			nav2d_operator::cmd msg;
-
+			ROS_ERROR("DIFF: %f",diff);
 			ROS_INFO_THROTTLE(1.0,"Heading: %.2f / Desired: %.2f / Difference: %.2f / Tolerance: %.2f", mCurrentDirection, goal_orientation, diff, targetAngle);
 			if(diff <= targetAngle)
 			{
@@ -1025,30 +1052,65 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 					task.initSurrRef();
 					task.confirmed();
 					ROS_INFO("UAGV move out. Finishing cargo transportation.");
-					break;
+					nav2d_navigator::RegistrationResult r;
+					r.final_pose.x = mCurrentPositionX;
+					r.final_pose.y = mCurrentPositionY;
+					r.final_pose.theta = mCurrentDirection;
+					r.final_distance = mCurrentPlan[mStartPoint];
+					mRegistrationActionServer->setSucceeded(r);
+					stop();
+					return;
 				}
-				if( goalClstr > 1 )
+				if( task.action() == REG_ACT_OUTSIDE && targetflag )
 				{
-					if( task.action() == REG_ACT_OUTSIDE )
+					if(!mShortestPlan)
 					{
-						/* Not sure if UAGV can see reference objects in long distance, it can't see when simulating.
-						if( task.laserCluster.size() == 2 )
+						mShortestPlan = true;
+						NodeHandle laserScan(LS_NODE);
+						ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
+						std_srvs::SetBool srv;
+						srv.request.data = true;
+						if(!switchclient.call(srv))
 						{
-							task.aborted();
-							ROS_ERROR( "Obstacles in the way of UAGV's destination." );
-							break;
-						}*/
-						task.reset();
-						task.initSurrRef();
-						task.setRequest( REG_ACT_UNDER );
-						ROS_INFO("Finishing Stage1 registration. Starting Stage2.");
+							laserScan.shutdown();
+							task.reset();
+							task.initSurrRef();
+							ROS_ERROR( "Switching LaserScan filter failed." );
+							mRegistrationActionServer->setAborted();
+							stop();
+							return;
+						}		
+						laserScan.shutdown();
+						continue;
 					}
-					else if( task.action() == REG_ACT_UNDER && task.roundCheck() )
+					task.reset();
+					task.initSurrRef();
+					task.setRequest( REG_ACT_UNDER );
+					ROS_INFO("Finishing Stage1 registration. Starting Stage2.");
+					mShortestPlan = false;
+					continue;
+				}
+				if( goalClstr > 1 && goalClstr < 5 )
+				{
+					if( task.action() == REG_ACT_UNDER && task.roundCheck() )
 					{
 						task.reset();
 						task.initSurrRef();
 						task.confirmed();
 						ROS_INFO("Finishing Stage2 registration.");
+						NodeHandle laserScan(LS_NODE);
+						ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
+						std_srvs::SetBool srv;
+						srv.request.data = false;
+						if(!switchclient.call(srv))
+						{
+							laserScan.shutdown();
+							ROS_ERROR( "Switching LaserScan filter failed." );
+							mRegistrationActionServer->setAborted();
+							stop();
+							return;
+						}		
+						laserScan.shutdown();
 						break;
 					}
 				}
@@ -1066,7 +1128,7 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			if(msg.Velocity > 1) 
 				msg.Velocity = 1;
 			msg.Mode = 2;
-			if(diff<0.1)
+			if(diff<0.3)
 			{
 				ROS_ERROR("SLIGHT");
 				Rate steprate = mSlightRate;
@@ -1113,38 +1175,12 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		std_srvs::Trigger srv;
 		if(liftclient.call(srv)){
 			ROS_INFO("Calling lift up service succeed.");
-			mCellInflationRadius = 0;
-			mRobotRadius = mCargoRadius;
-			mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
-
-			NodeHandle temp2(LS_NODE);
-			temp2.setParam("range_min", mRobotRadius);
-			ServiceClient updateclient = temp2.serviceClient<std_srvs::Trigger>(LS_UPDATE_SERVICE);
-			std_srvs::Trigger srv2;
-			if(updateclient.call(srv2)){
-				ROS_INFO("Updating LaserScan range succeed.");
-				nav2d_navigator::RegistrationResult r;
-				r.final_pose.x = mCurrentPositionX;
-				r.final_pose.y = mCurrentPositionY;
-				r.final_pose.theta = mCurrentDirection;
-				r.final_distance = mCurrentPlan[mStartPoint];
-				mRegistrationActionServer->setSucceeded(r);
-			}
-			else{
-				ROS_ERROR("Updating LaserScan range failed.");
-				mRegistrationActionServer->setAborted();
-				temp.shutdown();
-				temp2.shutdown();
-				return;
-			}
 			temp.shutdown();
-			temp2.shutdown();
-			sleep(10);
 		}
 		else{
 			ROS_ERROR("Calling lift up service failed.");
-			mRegistrationActionServer->setAborted();
 			temp.shutdown();
+			mRegistrationActionServer->setAborted();
 			return;
 		}
 	}
@@ -1174,7 +1210,7 @@ void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal
 	unsigned int cycle = 0;
 	unsigned int errcounter = 0;
 	bool reached = false;
-	int recheckCycles = mMinReplanningPeriod * FREQUENCY;
+	int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY);
 	
 	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mNavigationGoalDistance;
 	double targetAngle = (goal->target_angle > 0) ? goal->target_angle : mNavigationGoalAngle;
@@ -1333,7 +1369,7 @@ void RobotNavigator::receiveExploreGoal(const nav2d_navigator::ExploreGoal::Cons
 	unsigned int cycle = 0;
 	unsigned int lastCheck = 0;
 	unsigned int errcounter = 0;
-	unsigned int recheckCycles = mMinReplanningPeriod * FREQUENCY;
+	unsigned int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY);
 	unsigned int recheckThrottle = mMaxReplanningPeriod * FREQUENCY;
 	
 	// Move to exploration target
@@ -1477,6 +1513,36 @@ void RobotNavigator::receiveLiftGoal(const nav2d_navigator::LiftGoal::ConstPtr &
 		mLiftCmdPublisher.publish(msg);
 	}
 	mLiftStatus = goal->target_status;
+	if(goal->cmd==LIFT_UP || goal->cmd==LIFT_DOWN)
+	{
+		sleep(10);
+		mCellInflationRadius = 0;
+		mRobotRadius = (goal->cmd==LIFT_DOWN ? mInitRobotRadius : mCargoRadius);
+		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
+
+		NodeHandle laserScan(LS_NODE);
+		laserScan.setParam("range_min", (goal->cmd==LIFT_DOWN ? mInitLSRad : mEnlargedLSRad));
+		ServiceClient updateclient = laserScan.serviceClient<std_srvs::Trigger>("updateLaserRange");
+		std_srvs::Trigger srv;
+		if(updateclient.call(srv)){
+			sleep(1);
+			ROS_INFO("Updating LaserScan range succeed.");
+			nav2d_navigator::LiftFeedback fb;
+			fb.status = mLiftStatus;
+			mLiftActionServer->publishFeedback(fb);
+			nav2d_navigator::LiftResult r;
+			r.final_status = mLiftStatus;
+			mLiftActionServer->setSucceeded(r);
+		}
+		else{
+			ROS_ERROR("Updating LaserScan range failed.");
+			mLiftActionServer->setAborted();
+		}
+		laserScan.shutdown();
+		stop();
+		return;
+	}
+	sleep(1);
 	nav2d_navigator::LiftFeedback fb;
 	fb.status = mLiftStatus;
 	mLiftActionServer->publishFeedback(fb);

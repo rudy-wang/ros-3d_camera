@@ -2,6 +2,7 @@
 #include <nav_msgs/GetMap.h>
 #include <std_msgs/UInt8.h>
 #include <std_srvs/Trigger.h>
+#include <std_srvs/SetBool.h>
 #include <tf/transform_listener.h>
 #include <actionlib/server/simple_action_server.h>
 #include <pluginlib/class_loader.h>
@@ -88,6 +89,7 @@ private:
 	bool mHasNewMap;
 	bool mIsPaused;
 	bool mIsStopped;
+	bool mShortestPlan;
 	int mStatus;
 	int mRobotID;
 	unsigned int mGoalPoint;
@@ -107,6 +109,10 @@ private:
 	double mInitRobotRadius;
 	double mRobotRadius;
 	double mCargoRadius;
+	double mSensorX;
+	double mEnlargedLSRad;
+	double mInitLSRad;
+	double mSlightRate;
 	unsigned int mCellInflationRadius;
 	unsigned int mCellRobotRadius;
 	unsigned int mLiftStatus;
@@ -124,5 +130,4 @@ private:
 	double mRegistrationGoalAngle;
 	double mMinReplanningPeriod;
 	double mMaxReplanningPeriod;
-	double mSlightRate;
 };

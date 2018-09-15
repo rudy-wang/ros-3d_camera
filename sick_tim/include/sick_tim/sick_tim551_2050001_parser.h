@@ -47,7 +47,7 @@ public:
   virtual ~SickTim5512050001Parser();
 
   virtual int parse_datagram(char* datagram, size_t datagram_length, SickTimConfig &config,
-                             sensor_msgs::LaserScan &msg);
+                             sensor_msgs::LaserScan &msg, bool filter = false);
 
   void set_range_min(float min);
   void set_range_max(float max);

@@ -38,7 +38,7 @@ namespace sick_tim
   ScanAndCloudParser::~ScanAndCloudParser(){};
 
   int ScanAndCloudParser::parse_datagram(char* datagram, size_t datagram_length, SickTimConfig &config,
-                             sensor_msgs::LaserScan &msg)
+                             sensor_msgs::LaserScan &msg, bool filter)
   {
     sensor_msgs::PointCloud2 cloud;
     return parse_datagram(datagram, datagram_length, config, msg, cloud);
