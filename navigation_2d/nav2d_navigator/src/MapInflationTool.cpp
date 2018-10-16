@@ -1,4 +1,5 @@
 #include <nav2d_navigator/MapInflationTool.h>
+#include <omp.h>
 
 CellData::CellData(double d, double i, unsigned int sx, unsigned int sy):distance(d), index(i), sx(sx), sy(sy){
 }
@@ -27,11 +28,12 @@ void MapInflationTool::computeCaches(unsigned int radius)
 	
 	mCachedCosts = new char*[mCellInflationRadius + 2];
 	mCachedDistances = new double*[mCellInflationRadius + 2];
-	
+	#pragma omp parallel for
 	for(unsigned int i = 0; i < mCellInflationRadius + 2; i++)
 	{
 		mCachedCosts[i] = new char[mCellInflationRadius + 2];
 		mCachedDistances[i] = new double[mCellInflationRadius + 2];
+		#pragma omp parallel for
 		for(unsigned int j = 0; j < mCellInflationRadius + 2; j++)
 		{
 			double d = sqrt(i*i + j*j);
@@ -51,7 +53,7 @@ inline double MapInflationTool::distanceLookup(int mx, int my, int src_x, int sr
 	if(dx > mCellInflationRadius + 1 || dy > mCellInflationRadius + 1)
 	{
 		ROS_ERROR("Error in distanceLookup! Asked for (%d, %d), but CellInflationRadius is %d!", dx, dy, mCellInflationRadius);
-		return 50.0;
+		return 999.0;
 	}
 	return mCachedDistances[dx][dy];
 }
@@ -64,7 +66,7 @@ inline char MapInflationTool::costLookup(int mx, int my, int src_x, int src_y)
 	if(dx > mCellInflationRadius + 1 || dy > mCellInflationRadius + 1)
 	{
 		ROS_ERROR("Error in costLookup! Asked for (%d, %d), but CellInflationRadius is %d!", dx, dy, mCellInflationRadius);
-		return 50.0;
+		return 999.0;
 	}
 	return mCachedCosts[dx][dy];
 }
@@ -80,6 +82,7 @@ void MapInflationTool::inflateMap(GridMap* map)
 	
 	if(mInflationMarkers) delete[] mInflationMarkers;
 	mInflationMarkers = new unsigned char[mapSize];
+	#pragma omp parallel for
 	for(int i = 0; i < mapSize; i++)
 	{
 		mInflationMarkers[i] = 0;
@@ -87,7 +90,7 @@ void MapInflationTool::inflateMap(GridMap* map)
 	
 	// 1. Put all real obstacles in a queue
 	while(!mInflationQueue.empty()) mInflationQueue.pop();
-	
+	#pragma omp parallel for
 	for(int index = 0; index < mapSize; index++)
 	{
 		if(mGridMap->getData(index) > 0)
@@ -130,7 +133,7 @@ void MapInflationTool::enqueueObstacle(unsigned int index, unsigned int sx, unsi
 	if(mInflationMarkers[index] != 0) return;
 	
 	double distance = distanceLookup(mx, my, sx, sy);
-	if(distance == 50)
+	if(distance == 999)
 		ROS_INFO("Tried to add cell (%u, %u) -> (%u, %u) to inflation queue!", sx, sy, mx, my);
 	
 	if(distance > mCellInflationRadius) return;

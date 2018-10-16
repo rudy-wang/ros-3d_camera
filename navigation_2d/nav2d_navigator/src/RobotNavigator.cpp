@@ -15,7 +15,9 @@
 #ifndef PI
 	#define PI 3.14159265	
 #endif
-#define FREQUENCY 1.5
+#define FREQUENCY 1.0
+#define SLIGHT_RAD 0.1
+#define SLIGHT_DIS 0.05
 
 using namespace ros;
 using namespace tf;
@@ -129,12 +131,13 @@ RobotNavigator::RobotNavigator()
 		return;
 	}
 	mSensorX = Ltransform.getOrigin().x();
-	mEnlargedLSRad = sqrt(pow(sqrt(2)*0.5*mCargoRadius-mSensorX,2)+pow(sqrt(2)*0.5*mCargoRadius,2));
+	mEnlargedLSRad = sqrt(pow(sqrt(2)*0.5*mCargoRadius-mSensorX,2)+pow(sqrt(2)*0.5*mCargoRadius,2))+0.1;
 	
 	mHasNewMap = false;
 	mIsStopped = false;
 	mIsPaused = false;
 	mShortestPlan = false;
+	mIgnoreObstacle = false;
 	mLiftStatus = LIFT_HALT;
 	mStatus = NAV_ST_IDLE;
 	mCellInflationRadius = 0;
@@ -180,7 +183,32 @@ bool RobotNavigator::getMap()
 		mInflationTool.computeCaches(mCellInflationRadius);
 		mCurrentMap.setLethalCost(mCostLethal);
 	}
-	
+	int maxDim = (mCurrentMap.getWidth()>mCurrentMap.getHeight()?mCurrentMap.getWidth():mCurrentMap.getHeight());
+	if(mEucDistance.size() != maxDim)
+	{
+		mEucDistance.clear();
+		#pragma omp parallel for
+		for(int i=0; i<maxDim+1; i++)
+		{
+			mEucDistance.push_back(std::vector<double>());
+			std::vector<double> &temp = mEucDistance.back();
+			#pragma omp parallel for
+			for(int j=0; j<maxDim+1; j++)
+			{
+				temp.push_back(double());
+			}
+		}
+		#pragma omp parallel for
+		for(int i=0; i<maxDim+1; i++)
+		{
+			#pragma omp parallel for
+			for(int j=0; j<=i; j++)
+			{
+				mEucDistance[i][j] = sqrt(pow(i,2)+pow(j,2));
+				mEucDistance[j][i] = mEucDistance[i][j];
+			}
+		}
+	}
 	mHasNewMap = true;
 	return true;
 }
@@ -252,6 +280,8 @@ bool RobotNavigator::createPlan()
 	ROS_DEBUG("Map-Value of goal point is %d, lethal threshold is %d.", mCurrentMap.getData(mGoalPoint), mCostLethal);
 	
 	unsigned int goal_x = 0, goal_y = 0;
+	unsigned int start_x = 0, start_y = 0;
+	mCurrentMap.getCoordinates(start_x,start_y,mStartPoint);
 	if(mCurrentMap.getCoordinates(goal_x,goal_y,mGoalPoint))
 	{
 		visualization_msgs::Marker marker;
@@ -289,7 +319,7 @@ bool RobotNavigator::createPlan()
 	{
 		mCurrentPlan[i] = -1;
 	}
-	if(mCurrentMap.isFree(mGoalPoint) || (mStatus == NAV_ST_REGISTRATION && mCurrentMap.getData(mGoalPoint)>=0))
+	if(mCurrentMap.isFree(mGoalPoint) || mShortestPlan || mIgnoreObstacle || mStatus == NAV_ST_REGISTRATION)
 	{
 		queue.insert(Entry(0.0, mGoalPoint));
 		mCurrentPlan[mGoalPoint] = 0;
@@ -298,20 +328,22 @@ bool RobotNavigator::createPlan()
 		// Initialize the queue with area around the goal point
 		int reach = mCellRobotRadius + (1.0 / mCurrentMap.getResolution());
 		std::vector<unsigned int> neighbors = mCurrentMap.getFreeNeighbors(mGoalPoint, reach);
-		#pragma omp parallel for
+		
 		for(unsigned int i = 0; i < neighbors.size(); i++)
 		{
 			queue.insert(Entry(0.0, neighbors[i]));
 			mCurrentPlan[neighbors[i]] = 0;
+			mCurrentMap.getCoordinates(goal_x,goal_y,neighbors[i]);
 		}
 	}
 	
 	Queue::iterator next;
 	double distance;
-	unsigned int x, y, index,tpx,tpy;
+	unsigned int x, y, index;
 	double linear = mCurrentMap.getResolution();
 	double diagonal = std::sqrt(2.0) * linear;
 	// Do full search with Dijkstra-Algorithm
+		ROS_ERROR("~~~~A");
 	while(!queue.empty())
 	{
 		// Get the nearest cell from the queue
@@ -335,42 +367,36 @@ bool RobotNavigator::createPlan()
 		ind.push_back(index - mCurrentMap.getWidth() + 1);
 		ind.push_back(index + mCurrentMap.getWidth() - 1);
 		ind.push_back(index + mCurrentMap.getWidth() + 1);
-		double tlinear = 10 * sqrt(sqrt( linear / (double)mCostObstacle ));
-		double tdiagonal = 10 * sqrt(sqrt( diagonal / (double)mCostObstacle ));
-		#pragma omp parallel for shared(mCurrentPlan)
+
 		for(unsigned int it = 0; it < ind.size(); it++)
 		{
 			unsigned int i = ind[it];
 			if(mCurrentMap.getData(i) >= 0)//mCurrentMap.isFree(i) || (mStatus == NAV_ST_REGISTRATION && mCurrentMap.getData(i)>=0))
 			{
+				mCurrentMap.getCoordinates(x, y, i);
+				int Xoffset_t = x-start_x;
+				int Yoffset_t = y-start_y;
+				int Xoffset_g = goal_x-start_x;
+				int Yoffset_g = goal_y-start_y;
+
+				double delta_t = (abs(Xoffset_t)<=500&&abs(Yoffset_t)<=500 ? mEucDistance[abs(Xoffset_t)][abs(Yoffset_t)] : sqrt(pow(Xoffset_t,2)+pow(Yoffset_t,2)));
+				double delta_g = (abs(Xoffset_g)<=500&&abs(Yoffset_g)<=500 ? mEucDistance[abs(Xoffset_g)][abs(Yoffset_g)] : sqrt(pow(Xoffset_g,2)+pow(Yoffset_g,2)));
 				double delta = (it < 4) ? linear : diagonal;
 				double newDistance;
-				if(mShortestPlan)
-				{
-					newDistance = distance + delta;
-				}
-				else if(!mShortestPlan && mStatus == NAV_ST_REGISTRATION)
-				{
-					double tdelta = (it < 4) ? tlinear : tdiagonal;
-					newDistance = distance + delta + (tdelta * sqrt(sqrt( (double)mCurrentMap.getData(i))));
-				}
-				else
-				{
-					newDistance = distance + delta + (10 * delta * (double)mCurrentMap.getData(i) / (double)mCostObstacle);
-				}
+				newDistance = (distance + delta * (1 - (delta_t != 0 && delta_g != 0 ? (Xoffset_g * Xoffset_t + Yoffset_g * Yoffset_t)/(delta_t * delta_g) : 0)) + (20 * delta * (double)mCurrentMap.getData(i) / (double)mCostObstacle));
 				if(mCurrentPlan[i] == -1 || newDistance < mCurrentPlan[i])
 				{
 					queue.insert(Entry(newDistance, i));
-					#pragma omp atomic
 					mCurrentPlan[i] = newDistance;
 				}
 			}
 		}
 	}
+		ROS_ERROR("~~~~B");
 	
-	if(mCurrentPlan[mStartPoint] < 0 && mStatus != NAV_ST_REGISTRATION)
+	if(mCurrentPlan[mStartPoint] < 0)
 	{
-		ROS_ERROR("No way between robot and goal!");
+	ROS_ERROR("No way between robot and goal!");
 		return false;
 	}
 	
@@ -388,7 +414,24 @@ void RobotNavigator::publishPlan()
 	plan_msg.cell_height = mCurrentMap.getResolution();
 	
 	unsigned int index = mStartPoint;
+	unsigned int next_index = index;
+	unsigned int last_index = index;
+	unsigned int s_x = 0, s_y = 0, g_x = 0, g_y = 0, tgx = 0, tsx = 0, inversFlag = false;
+	mCurrentMap.getCoordinates(s_x,s_y,mStartPoint);
+	mCurrentMap.getCoordinates(g_x,g_y,mGoalPoint);
+	if(g_x-s_x==0)
+	{
+		tgx = g_x;
+		tsx = s_x;
+		g_x = g_y;
+		g_y = tgx;
+		s_x = s_y;
+		s_y = tsx;
+		inversFlag = true;
+	}
+	double slope = (g_x-s_x == 0 ? 0 : ((double)g_y-(double)s_y)/((double)g_x-(double)s_x));
 	std::vector<std::pair<double, double> > points;
+		ROS_ERROR("+++++A");
 	while(true)
 	{
 		unsigned int x = 0, y = 0;
@@ -400,37 +443,56 @@ void RobotNavigator::publishPlan()
 
 		if(mCurrentPlan[index] == 0) break;
 		
-		unsigned int next_index = index;
-		unsigned int lastIndex;
-		
 		std::vector<unsigned int> neighbors;
-		if(mStatus == NAV_ST_REGISTRATION){
-			neighbors.push_back(index - 1);
-			neighbors.push_back(index + 1);
-			neighbors.push_back(index - mCurrentMap.getWidth());
-			neighbors.push_back(index + mCurrentMap.getWidth());
+		if(mStatus == NAV_ST_REGISTRATION || mShortestPlan || mIgnoreObstacle){
 			neighbors.push_back(index - mCurrentMap.getWidth() - 1);
+			neighbors.push_back(index - mCurrentMap.getWidth());
 			neighbors.push_back(index - mCurrentMap.getWidth() + 1);
+			neighbors.push_back(index - 1);
+			neighbors.push_back(index);
+			neighbors.push_back(index + 1);
 			neighbors.push_back(index + mCurrentMap.getWidth() - 1);
+			neighbors.push_back(index + mCurrentMap.getWidth());
 			neighbors.push_back(index + mCurrentMap.getWidth() + 1);
 		}else{
 			neighbors = mCurrentMap.getFreeNeighbors(index);
 		}
 		for(unsigned int i = 0; i < neighbors.size(); i++)
 		{
-			if(mCurrentPlan[neighbors[i]] >= 0 && mCurrentPlan[neighbors[i]] < (mStatus == NAV_ST_REGISTRATION && next_index == index && next_index != mGoalPoint ? mCurrentPlan[next_index] + 999 : mCurrentPlan[next_index]))
+			if(mShortestPlan)
 			{
-				if (neighbors[i] == mGoalPoint || lastIndex != neighbors[i] || mStatus != NAV_ST_REGISTRATION)
+				unsigned int n_x = 0, n_y = 0, temp = 0;
+				if(inversFlag)
+				{
+					temp = x;
+					x = y;
+					y = temp;
+					if(!mCurrentMap.getCoordinates(n_y,n_x,neighbors[i]))
+						continue;
+				}		
+				else
+				{
+					if(!mCurrentMap.getCoordinates(n_x,n_y,neighbors[i]))
+						continue;
+				}
+				
+				double tempdiffX = abs((double)n_x-(double)s_x)*slope;
+				double tempdiffY = abs((double)n_y-(double)s_y);
+				if(floor(tempdiffX)<=tempdiffY && ceil(tempdiffX)>=tempdiffY && ((int)g_x-(int)n_x)*((int)n_x-(int)x)>=0 && ((int)g_y-(int)n_y)*((int)n_y-(int)y)>=0)
 				{
 					next_index = neighbors[i];
 				}
 			}
+			else if(mCurrentPlan[neighbors[i]] >= 0 && mCurrentPlan[neighbors[i]] <= mCurrentPlan[next_index] && neighbors[i] != last_index && neighbors[i] != index)
+			{
+				next_index = neighbors[i];
+			}
 		}
-		
 		if(index == next_index) break;
-		lastIndex = index;
+		last_index = index;
 		index = next_index;
 	}
+		ROS_ERROR("+++++B");
 	plan_msg.cells.resize(points.size());
 	#pragma omp parallel for
 	for(unsigned int i = 0; i < points.size(); i++)
@@ -474,10 +536,9 @@ bool RobotNavigator::correctGoalPose()
 		
 		// Add all adjacent cells
 		std::vector<unsigned int> neighbors = mCurrentMap.getNeighbors(index);
-		#pragma omp parallel for
 		for(unsigned int i = 0; i < neighbors.size(); i++)
 		{
-			if(mCurrentMap.isFree(neighbors[i]) || (mStatus == NAV_ST_REGISTRATION && mCurrentMap.getData(neighbors[i])>=0))
+			if(mCurrentMap.isFree(neighbors[i]))
 			{
 				mGoalPoint = neighbors[i];
 				return true;
@@ -505,12 +566,15 @@ void RobotNavigator::stop()
 	mIsPaused = false;
 	mIsStopped = false;
 	mShortestPlan = false;
+	mIgnoreObstacle = false;
+	/*
 	NodeHandle laserScan(LS_NODE);
 	ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
 	std_srvs::SetBool srv;
 	srv.request.data = false;
 	switchclient.call(srv);
 	laserScan.shutdown();
+	*/
 }
 
 bool RobotNavigator::generateCommand()
@@ -537,21 +601,37 @@ bool RobotNavigator::generateCommand()
 	}
 
 	unsigned int target = mStartPoint;
-	int steps = (mStatus == NAV_ST_REGISTRATION ? 0.3 : 1.0) / mCurrentMap.getResolution();
+	unsigned int bestPoint = target;
+	unsigned int lastPoint = target;
+	int steps = (mStatus != NAV_ST_REGISTRATION ? 1.0 : 0.5) / mCurrentMap.getResolution();
+	unsigned int s_x = 0, s_y = 0, g_x = 0, g_y = 0, tgx = 0, tsx = 0, inversFlag = false;
+	mCurrentMap.getCoordinates(s_x,s_y,mStartPoint);
+	mCurrentMap.getCoordinates(g_x,g_y,mGoalPoint);
+	if(g_x-s_x==0)
+	{
+		tgx = g_x;
+		tsx = s_x;
+		g_x = g_y;
+		g_y = tgx;
+		s_x = s_y;
+		s_y = tsx;
+		inversFlag = true;
+	}
+	double slope = (g_x-s_x == 0 ? 0 : ((double)g_y-(double)s_y)/((double)g_x-(double)s_x));
 	for(int i = 0; i < steps; i++)
 	{
 		unsigned int x = 0, y = 0;
-		unsigned int bestPoint = target;
-		unsigned int lastPoint;
+		mCurrentMap.getCoordinates(x, y, target);
 		std::vector<unsigned int> neighbors;
-		if(mStatus == NAV_ST_REGISTRATION){
-			neighbors.push_back(target - 1);
-			neighbors.push_back(target + 1);
-			neighbors.push_back(target - mCurrentMap.getWidth());
-			neighbors.push_back(target + mCurrentMap.getWidth());
+		if(mStatus == NAV_ST_REGISTRATION || mShortestPlan || mIgnoreObstacle){
 			neighbors.push_back(target - mCurrentMap.getWidth() - 1);
+			neighbors.push_back(target - mCurrentMap.getWidth());
 			neighbors.push_back(target - mCurrentMap.getWidth() + 1);
+			neighbors.push_back(target - 1);
+			neighbors.push_back(target);
+			neighbors.push_back(target + 1);
 			neighbors.push_back(target + mCurrentMap.getWidth() - 1);
+			neighbors.push_back(target + mCurrentMap.getWidth());
 			neighbors.push_back(target + mCurrentMap.getWidth() + 1);
 		}else{
 			neighbors = mCurrentMap.getFreeNeighbors(target);
@@ -559,14 +639,36 @@ bool RobotNavigator::generateCommand()
 
 		for(unsigned int i = 0; i < neighbors.size(); i++)
 		{
-			if(mCurrentPlan[neighbors[i]] >= (unsigned int)0 && mCurrentPlan[neighbors[i]] < (mStatus == NAV_ST_REGISTRATION && bestPoint == target && bestPoint != mGoalPoint ? mCurrentPlan[bestPoint] + 999 : mCurrentPlan[bestPoint]))
+			if(mShortestPlan)
 			{
-				if (neighbors[i] == mGoalPoint || lastPoint != neighbors[i] || mStatus != NAV_ST_REGISTRATION)
+				unsigned int n_x = 0, n_y = 0, temp = 0;
+				if(inversFlag)
+				{
+					temp = x;
+					x = y;
+					y = temp;
+					if(!mCurrentMap.getCoordinates(n_y,n_x,neighbors[i]))
+						continue;
+				}		
+				else
+				{
+					if(!mCurrentMap.getCoordinates(n_x,n_y,neighbors[i]))
+						continue;
+				}
+				
+				double tempdiffX = abs((double)n_x-(double)s_x)*slope;
+				double tempdiffY = abs((double)n_y-(double)s_y);
+				if(floor(tempdiffX)<=tempdiffY && ceil(tempdiffX)>=tempdiffY && ((int)g_x-(int)n_x)*((int)n_x-(int)x)>=0 && ((int)g_y-(int)n_y)*((int)n_y-(int)y)>=0)
 				{
 					bestPoint = neighbors[i];
 				}
 			}
+			else if(mCurrentPlan[neighbors[i]] >= (unsigned int)0 && mCurrentPlan[neighbors[i]] <= mCurrentPlan[bestPoint] && neighbors[i] != lastPoint && neighbors[i] != target)
+			{
+				bestPoint = neighbors[i];
+			}
 		}
+		if(target == bestPoint) break;
 		lastPoint = target;
 		target = bestPoint;
 	}
@@ -584,30 +686,40 @@ bool RobotNavigator::generateCommand()
 	
 	// Create the command message
 	nav2d_operator::cmd msg;
-	msg.Turn = (mStatus == NAV_ST_REGISTRATION ? -5.0 : -2.5) * angle / PI; //2.0*
+	msg.Turn = -4.0 * angle / PI; //2.0*
 	if(msg.Turn < -1) msg.Turn = -1;
 	if(msg.Turn >  1) msg.Turn = 1;
+
+	mCurrentMap.getCoordinates(x, y, mGoalPoint);
+	double dist = sqrt(pow(fabs((double)y - current_y),2)+pow(fabs((double)x - current_x),2))*mCurrentMap.getResolution();
 	
 	if((mCurrentPlan[mStartPoint] > mNavigationHomingDistance || mStatus == NAV_ST_EXPLORING) && mStatus != NAV_ST_REGISTRATION)
 		msg.Mode = 0;
-	else if(mStatus == NAV_ST_REGISTRATION)
+	else if(mShortestPlan||mIgnoreObstacle)
+	{
 		msg.Mode = 2;
+		msg.Turn = msg.Turn * (dist < 0.5 ? 3.0 : 2.0);
+		if(msg.Turn < -1) msg.Turn = -1;
+		if(msg.Turn >  1) msg.Turn = 1;
+	}
 	else
 		msg.Mode = 1;
-	
-	if((mStatus == NAV_ST_REGISTRATION ? mCurrentPlan[mStartPoint] > 0.8 : mCurrentPlan[mStartPoint] > 0.5) || mCurrentPlan[mStartPoint] < 0)
+	if(dist > 1.0 || mCurrentPlan[mStartPoint] < 0)
 	{
 		msg.Velocity = 1.0;
 	}else
 	{
-		msg.Velocity = 0.5 + (mCurrentPlan[mStartPoint] / 2.0);
-		if(mStatus == NAV_ST_REGISTRATION && mCurrentPlan[mStartPoint] < 0.5)
+		msg.Velocity = 0.5 + dist / 2.0;
+		
+		if((mShortestPlan||mIgnoreObstacle) && dist < 0.5)
 		{
 			msg.Velocity = msg.Velocity * 0.3;
 		}
+		
 	}
-	if(sqrt(pow(fabs((double)y - current_y),2)+pow(fabs((double)x - current_x),2))*mCurrentMap.getResolution()<0.15 && abs(angle)<0.7)
+	if(dist<SLIGHT_DIS && abs(angle)<SLIGHT_RAD && mStatus == NAV_ST_REGISTRATION)
 	{
+		ROS_ERROR("SLIGHT0");
 		Rate steprate = mSlightRate;
 		mCommandPublisher.publish(msg);
 		steprate.sleep();
@@ -776,79 +888,38 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		ROS_ERROR("Unloading cargo failed, no cargo is loaded now.");
 		mRegistrationActionServer->setAborted();
 		stop();
-		mCellInflationRadius = 0;
-		mRobotRadius = mInitRobotRadius;
-		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
 		return;
 	}
 	if (goal->action == REG_ACT_MOVE)
 	{
 		ROS_INFO("Executing navigation to unload cargo.");
-	}
-	else if (goal->action == REG_ACT_OUTSIDE)
-	{
-		ROS_INFO("Executing navigation to be near cargo.");
-	}
-	MoveClient* newMoveClient;
-	newMoveClient = new MoveClient(NAV_MOVE_ACTION, true);
-	newMoveClient->waitForServer();
-	
-	nav2d_navigator::MoveToPosition2DGoal MoveGoal;
-	MoveGoal.target_pose.x = goal->target_pose.x;
-	MoveGoal.target_pose.y = goal->target_pose.y;
-	MoveGoal.target_pose.theta = goal->target_pose.theta;
-	MoveGoal.target_distance = (goal->action == REG_ACT_MOVE ? mNavigationGoalDistance : mRegNavGoalDistance);
-	MoveGoal.target_angle = PI;
-	
-	newMoveClient->sendGoal(MoveGoal);
-	newMoveClient->waitForResult();
-	if (newMoveClient->getState() != actionlib::SimpleClientGoalState::SUCCEEDED)
-	{
-		ROS_INFO("Navigation failed, abort mission.");
-		delete newMoveClient;
-		mRegistrationActionServer->setAborted();
-		stop();
-		mCellInflationRadius = 0;
-		mRobotRadius = mInitRobotRadius;
-		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
-		return;
-	}
-	delete newMoveClient;
-	stop();
-	sleep(1);
-	if (goal->action == REG_ACT_MOVE)
-	{
-		ROS_INFO("Goal reached. Cargo transport to destination.");
-		NodeHandle temp;
-		ServiceClient liftclient = temp.serviceClient<std_srvs::Trigger>(NAV_LIFTDOWN_SERVICE);
-		ServiceClient haltclient = temp.serviceClient<std_srvs::Trigger>(NAV_LIFTHALT_SERVICE);
-		std_srvs::Trigger srv;
-		if(liftclient.call(srv))
+		MoveClient* newMoveClient;
+		newMoveClient = new MoveClient(NAV_MOVE_ACTION, true);
+		newMoveClient->waitForServer();
+		
+		nav2d_navigator::MoveToPosition2DGoal MoveGoal;
+		MoveGoal.target_pose.x = goal->target_pose.x;
+		MoveGoal.target_pose.y = goal->target_pose.y;
+		MoveGoal.target_pose.theta = goal->target_pose.theta;
+		MoveGoal.target_distance = mNavigationGoalDistance;
+		MoveGoal.target_angle = PI;
+		
+		newMoveClient->sendGoal(MoveGoal);
+		newMoveClient->waitForResult();
+		if (newMoveClient->getState() != actionlib::SimpleClientGoalState::SUCCEEDED)
 		{
-			ROS_INFO("Calling lift down service succeed.");
-			if(haltclient.call(srv))
-			{
-				ROS_INFO("Lifting complete, and the power is suspended properly.");
-			}
-			else
-			{
-				ROS_WARN("Lifting complete, but lifting poll is still loaded with power.");
-			}
-			temp.shutdown();
-		}
-		else
-		{
-			ROS_ERROR("Calling lift down service failed.");
-			temp.shutdown();
+			ROS_INFO("Navigation failed, abort mission.");
+			delete newMoveClient;
 			mRegistrationActionServer->setAborted();
+			stop();
 			return;
 		}
+		delete newMoveClient;
+		stop();
+		sleep(1);
+		ROS_INFO("Goal reached. Cargo transport to destination.");
 	}
-	else
-	{
-		ROS_INFO("Navigation succeed, continue to registration.");
-	}
-	
+		
 	if(mStatus != NAV_ST_IDLE)
 	{
 		ROS_WARN("Navigator is busy!");
@@ -866,16 +937,17 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	spinOnce();
 	loopRate.sleep();
 	unsigned int cycle = 0;
-	unsigned int errcounter = 0;
-	bool reached = false, rightDir = true, targetflag = false, straightRun = false;
-	int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY), mapX, mapY, goalClstr = 0;
-	double target_x = 0, target_y = 0, goal_orientation = 0, center_x = 0, center_y = 0;
+	unsigned int errcounter = 0, goalClstr = 0, stuckCount = 0;
+	bool reached = false, rightDir = true;
+	int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY), mapX, mapY, prevGoalX = 0, prevGoalY = 0;
+	double target_x = 0, target_y = 0, goal_orientation = 0, center_x = 0.0/0.0, center_y = 0.0/0.0, disErrMin = 9999;
 	
 	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mRegistrationGoalDistance;
 	double targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
-
+	
 	while( task.status() == REG_ST_WORKING )
 	{
+		ROS_ERROR("SHORT: %d", mShortestPlan);
 		task.clustering();
 		// Where are we now
 		mHasNewMap = false;
@@ -888,38 +960,41 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			stop();
 			return;
 		}
-		if(task.laserCluster.size()==4)
-			targetflag = false;
-		if( ( rightDir == true || ( task.action() == REG_ACT_OUTSIDE && task.laserCluster.size() > 2 && !targetflag ) ) && !task.roundCheck() )
+		
+		goalClstr = task.laserCluster.size();
+		if( ( rightDir == true || ( task.action() == REG_ACT_OUTSIDE && task.laserCluster.size() > 2 ) ) )
 		{
-			goalClstr = task.laserCluster.size();
 			ROS_ERROR("Set target, %d", goalClstr);
 			switch( task.action() )
 			{
 				case REG_ACT_MOVE:
 					//move out from the bottom of cargo when cargo has been transported;
-					mShortestPlan = true;
-					targetAngle = PI;
-					task.moveOut( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation );
-					break;
-				case REG_ACT_OUTSIDE:
-					//outside shelf registration;
-					targetAngle = 0.2;
-					if(goalClstr==4)
-						targetflag = true;
-					if(mShortestPlan && targetflag)
+					targetAngle = 0.1;
+					if(!mShortestPlan)
 					{
-						goal_orientation = mCurrentDirection;
-						target_x = center_x;
-						target_y = center_y;
+						target_x = mCurrentPositionX;
+						target_y = mCurrentPositionY;
+						goal_orientation = mCurrentDirection + PI;
 					}
 					else
 					{
-						task.regLiftupOutside( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation, center_x, center_y );
+						task.moveOut( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation );
 					}
 					break;
+				case REG_ACT_OUTSIDE:
+					//outside cargo registration;
+					targetDistance = (goal->target_distance > 0) ? goal->target_distance : mRegistrationGoalDistance;
+					targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
+					target_x = goal->target_pose.x;
+					target_y = goal->target_pose.y;
+					goal_orientation = goal->target_pose.theta;
+					//task.regLiftupOutside( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation, center_x, center_y );
+					ROS_ERROR("TX: %f, TY: %f", target_x, target_y);
+					break;
 				case REG_ACT_UNDER:
-					//under shelf registration;
+					//under cargo registration;
+					mIgnoreObstacle = true;
+					targetDistance = (goal->target_distance > 0) ? goal->target_distance : mRegistrationGoalDistance;
 					targetAngle = (goal->target_angle > 0) ? goal->target_angle : mRegistrationGoalAngle;
 					task.regLiftupUnder( mCurrentPositionX, mCurrentPositionY, mCurrentDirection, mSensorX, target_x, target_y, goal_orientation );
 					break;
@@ -927,7 +1002,6 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 					ROS_ERROR( "Undefined registration request." );
 					break;
 			}
-			ROS_ERROR("X: %f, Y: %f, O: %f", target_x - mCurrentPositionX, target_y - mCurrentPositionY, mCurrentDirection - goal_orientation);
 			cycle = 0;
 			reached = false;
 			rightDir = false;
@@ -956,8 +1030,16 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		}
 		
 		// Constantly replan every 3 seconds
+		double disErr = sqrt(pow((double)(target_y - mCurrentPositionY),2)+pow((double)(target_x - mCurrentPositionX),2));
 		if(cycle % recheckCycles == 0)
 		{
+			if(disErr<1.7 && task.action()==REG_ACT_OUTSIDE)
+			{
+				mCellInflationRadius = 0;
+				mRobotRadius = 0.3;
+				mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
+				mIgnoreObstacle = true;
+			}
 			WallTime startTime = WallTime::now();
 			mStatus = NAV_ST_REGISTRATION;
 			
@@ -999,6 +1081,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 					
 					return;
 				}
+				spinOnce();
+				loopRate.sleep();
 				continue;
 			}
 			errcounter = 0;
@@ -1006,12 +1090,31 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			WallDuration d = endTime - startTime;
 			ROS_INFO("Path planning took %.09f seconds, distance is %.2f m.", d.toSec(), mCurrentPlan[mStartPoint]);
 		}
-		
-		// Are we already close enough?
-		double stopdis = (task.action() == REG_ACT_OUTSIDE ? 0.1 : targetDistance);
-		double disErr = sqrt(pow((double)(target_y - mCurrentPositionY),2)+pow((double)(target_x - mCurrentPositionX),2));
+		if(abs(prevGoalX - mapX)>2||abs(prevGoalY - mapY)>2)
+			disErrMin = 9999;
+		prevGoalX = mapX;
+		prevGoalY = mapY;
+		if(disErr < disErrMin)
+		{
+			disErrMin = disErr;
+			stuckCount = 0;
+		}
+		else if(disErr >= disErrMin && disErr > targetDistance && !mShortestPlan && !mIgnoreObstacle)
+		{
+			stuckCount++;
+		}
+		if(stuckCount > FREQUENCY * 10)
+		{
+			ROS_ERROR("UAGV is stuck! Mission is aborted");
+			task.reset();
+			task.initSurrRef();
+			mRegistrationActionServer->setAborted();
+			stop();
+			return;
+		}
 		ROS_ERROR("disErr: %f",disErr);
-		if(!reached && disErr <= stopdis && mCurrentPlan[mStartPoint] >= 0)
+		// Are we already close enough?
+		if(!reached && disErr <= targetDistance && mCurrentPlan[mStartPoint] >= 0)
 		{
 			ROS_INFO("Reached target, now turning to desired direction.");
 			reached = true;
@@ -1019,17 +1122,21 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 		
 		if(reached)
 		{
-			if(task.roundCheck())
+			stuckCount = 0;
+			if(false)
 			{
 				setCurrentPosition();
 				disErr = sqrt(pow((double)(target_y - mCurrentPositionY),2)+pow((double)(target_x - mCurrentPositionX),2));
-				if( disErr > stopdis)
+				if( disErr > targetDistance*1.5)
 				{
 					reached = false;
+					spinOnce();
+					loopRate.sleep();
 					continue;
 				}
 			}
 			// Are we also headed correctly?
+			setCurrentPosition();
 			double deltaTheta = mCurrentDirection - goal_orientation;
 			while(deltaTheta < -PI) deltaTheta += 2*PI;
 			while(deltaTheta >  PI) deltaTheta -= 2*PI;
@@ -1042,14 +1149,40 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 				rightDir = true;
 				msg.Turn = 0;
 				msg.Velocity = 0;
-				msg.Mode = 2;				
+				msg.Mode = 1;				
 				mCommandPublisher.publish(msg);
 
 				ROS_INFO("Final Heading: %.2f / Desired: %.2f / Difference: %.2f / Tolerance: %.2f", mCurrentDirection, goal_orientation, diff, targetAngle);
+				task.reset();
+				task.initSurrRef();
 				if( task.action() == REG_ACT_MOVE )
 				{
-					task.reset();
-					task.initSurrRef();
+					if(!mShortestPlan)
+					{
+						NodeHandle temp;
+						ServiceClient liftclient = temp.serviceClient<std_srvs::Trigger>(NAV_LIFTDOWN_SERVICE);
+						ServiceClient haltclient = temp.serviceClient<std_srvs::Trigger>(NAV_LIFTHALT_SERVICE);
+						std_srvs::Trigger srv;
+						if(liftclient.call(srv))
+						{
+							ROS_INFO("Calling lift down service succeed.");
+							if(haltclient.call(srv))
+								ROS_INFO("Lifting complete, and the power is suspended properly.");
+							else
+								ROS_WARN("Lifting complete, but lifting poll is still loaded with power.");
+							temp.shutdown();
+						}
+						else
+						{
+							ROS_ERROR("Calling lift down service failed.");
+							temp.shutdown();
+							mRegistrationActionServer->setAborted();
+							return;
+						}
+						mShortestPlan = true;
+						continue;
+					}
+					mShortestPlan = false;
 					task.confirmed();
 					ROS_INFO("UAGV move out. Finishing cargo transportation.");
 					nav2d_navigator::RegistrationResult r;
@@ -1061,59 +1194,29 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 					stop();
 					return;
 				}
-				if( task.action() == REG_ACT_OUTSIDE && targetflag )
+				else if( task.action() == REG_ACT_OUTSIDE )
 				{
-					if(!mShortestPlan)
+					task.confirmed();
+					ROS_INFO("Finishing registration.");
+					/*
+					NodeHandle laserScan(LS_NODE);
+					ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
+					std_srvs::SetBool srv;
+					srv.request.data = false;
+					if(!switchclient.call(srv))
 					{
-						mShortestPlan = true;
-						NodeHandle laserScan(LS_NODE);
-						ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
-						std_srvs::SetBool srv;
-						srv.request.data = true;
-						if(!switchclient.call(srv))
-						{
-							laserScan.shutdown();
-							task.reset();
-							task.initSurrRef();
-							ROS_ERROR( "Switching LaserScan filter failed." );
-							mRegistrationActionServer->setAborted();
-							stop();
-							return;
-						}		
 						laserScan.shutdown();
-						continue;
-					}
-					task.reset();
-					task.initSurrRef();
-					task.setRequest( REG_ACT_UNDER );
-					ROS_INFO("Finishing Stage1 registration. Starting Stage2.");
-					mShortestPlan = false;
-					continue;
+						ROS_ERROR( "Switching LaserScan filter failed." );
+						mRegistrationActionServer->setAborted();
+						stop();
+						return;
+					}		
+					laserScan.shutdown();
+					*/
+					break;
 				}
-				if( goalClstr > 1 && goalClstr < 5 )
-				{
-					if( task.action() == REG_ACT_UNDER && task.roundCheck() )
-					{
-						task.reset();
-						task.initSurrRef();
-						task.confirmed();
-						ROS_INFO("Finishing Stage2 registration.");
-						NodeHandle laserScan(LS_NODE);
-						ServiceClient switchclient = laserScan.serviceClient<std_srvs::SetBool>("scanFilterSwitch");
-						std_srvs::SetBool srv;
-						srv.request.data = false;
-						if(!switchclient.call(srv))
-						{
-							laserScan.shutdown();
-							ROS_ERROR( "Switching LaserScan filter failed." );
-							mRegistrationActionServer->setAborted();
-							stop();
-							return;
-						}		
-						laserScan.shutdown();
-						break;
-					}
-				}
+				spinOnce();
+				loopRate.sleep();
 				continue;
 			}
 			if(deltaTheta > 0)
@@ -1127,8 +1230,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			}
 			if(msg.Velocity > 1) 
 				msg.Velocity = 1;
-			msg.Mode = 2;
-			if(diff<0.3)
+			msg.Mode = (mShortestPlan ? 2 : 1);
+			if(diff<SLIGHT_RAD)
 			{
 				ROS_ERROR("SLIGHT");
 				Rate steprate = mSlightRate;
@@ -1166,6 +1269,8 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 	if( task.status() == REG_ST_SUCCEED )
 	{
 		// Set ActionServer suceeded
+		mIgnoreObstacle = false;
+		mShortestPlan = false;
 		task.reset();
 		task.initSurrRef();
 		ROS_INFO("Goal reached. Registration succeed.");
@@ -1183,6 +1288,12 @@ void RobotNavigator::receiveRegistrationGoal(const nav2d_navigator::Registration
 			mRegistrationActionServer->setAborted();
 			return;
 		}
+		nav2d_navigator::RegistrationResult r;
+		r.final_pose.x = mCurrentPositionX;
+		r.final_pose.y = mCurrentPositionY;
+		r.final_pose.theta = mCurrentDirection;
+		r.final_distance = mCurrentPlan[mStartPoint];
+		mRegistrationActionServer->setSucceeded(r);
 	}
 	else if( task.status() == REG_ST_FAILED )
 	{
@@ -1208,11 +1319,11 @@ void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal
 	// Start navigating according to the generated plan
 	Rate loopRate(FREQUENCY);
 	unsigned int cycle = 0;
-	unsigned int errcounter = 0;
+	unsigned int errcounter = 0, stuckCount = 0;
 	bool reached = false;
-	int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY);
+	int recheckCycles = ceil(mMinReplanningPeriod * FREQUENCY), mapX, mapY, prevGoalX = 0, prevGoalY = 0;
 	
-	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mNavigationGoalDistance;
+	double targetDistance = (goal->target_distance > 0) ? goal->target_distance : mNavigationGoalDistance, disErrMin = 0;
 	double targetAngle = (goal->target_angle > 0) ? goal->target_angle : mNavigationGoalAngle;
 	
 	while(true)
@@ -1242,8 +1353,8 @@ void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal
 				return;
 			}
 			
-			int mapX =  (double)(goal->target_pose.x - mCurrentMap.getOriginX()) / mCurrentMap.getResolution();
-			int mapY =  (double)(goal->target_pose.y - mCurrentMap.getOriginY()) / mCurrentMap.getResolution();
+			mapX =  (double)(goal->target_pose.x - mCurrentMap.getOriginX()) / mCurrentMap.getResolution();
+			mapY =  (double)(goal->target_pose.y - mCurrentMap.getOriginY()) / mCurrentMap.getResolution();
 			if(mapX < 0) mapX = 0;
 			if(mapX >= (int)mCurrentMap.getWidth()) mapX = mCurrentMap.getWidth() - 1;
 			if(mapY < 0) mapY = 0;
@@ -1257,8 +1368,9 @@ void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal
 				if(correctGoalPose())
 					success = createPlan();
 			}
-			if(sqrt(pow(goal->target_pose.x - mCurrentMap.getOriginX(),2)+pow(goal->target_pose.y - mCurrentMap.getOriginY(),2))<=goal->target_pose.y - mCurrentMap.getOriginY())
-				success = true;
+			// why i wrote this??????????
+			//if(sqrt(pow(goal->target_pose.x - mCurrentMap.getOriginX(),2)+pow(goal->target_pose.y - mCurrentMap.getOriginY(),2))<=goal->target_pose.y - mCurrentMap.getOriginY())
+			//	success = true;
 			if(!success)
 			{
 				errcounter++;
@@ -1285,11 +1397,33 @@ void RobotNavigator::receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal
 			stop();
 			return;
 		}
-		
+
+		if(abs(prevGoalX - mapX)>2||abs(prevGoalY - mapY)>2)
+			disErrMin = 9999;
+		prevGoalX = mapX;
+		prevGoalY = mapY;
+		if(mCurrentPlan[mStartPoint] < disErrMin)
+		{
+			disErrMin = mCurrentPlan[mStartPoint];
+			stuckCount = 0;
+		}
+		else if(mCurrentPlan[mStartPoint] > disErrMin && mCurrentPlan[mStartPoint] > targetDistance)
+		{
+			stuckCount++;
+		}
+		if(stuckCount > FREQUENCY * 30)
+		{
+			ROS_ERROR("UAGV is stuck! Mission is aborted");
+			mMoveActionServer->setAborted();
+			stop();
+			return;
+		}
 		// Are we already close enough?
-		if(!reached && mCurrentPlan[mStartPoint] <= targetDistance && mCurrentPlan[mStartPoint] >= 0)
+		double disErr = sqrt(pow((double)(goal->target_pose.y - mCurrentPositionY),2)+pow((double)(goal->target_pose.x - mCurrentPositionX),2));
+		if(!reached && disErr <= targetDistance && mCurrentPlan[mStartPoint] >= 0)
 		{
 			ROS_INFO("Reached target, now turning to desired direction.");
+			stuckCount = 0;
 			reached = true;
 		}
 		
@@ -1511,38 +1645,38 @@ void RobotNavigator::receiveLiftGoal(const nav2d_navigator::LiftGoal::ConstPtr &
 		std_msgs::UInt8 msg;
 		msg.data = goal->target_status;
 		mLiftCmdPublisher.publish(msg);
+		if(goal->target_status==LIFT_UP || goal->target_status==LIFT_DOWN)
+		{
+			sleep(10);
+			mCellInflationRadius = 0;
+			mRobotRadius = (goal->target_status==LIFT_DOWN ? mInitRobotRadius : mCargoRadius);
+			mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
+
+			NodeHandle laserScan(LS_NODE);
+			laserScan.setParam("range_min", (goal->target_status==LIFT_DOWN ? mInitLSRad : mEnlargedLSRad));
+			ServiceClient updateclient = laserScan.serviceClient<std_srvs::Trigger>("updateLaserRange");
+			std_srvs::Trigger srv;
+			if(updateclient.call(srv)){
+				sleep(1);
+				ROS_INFO("Updating LaserScan range succeed.");
+				nav2d_navigator::LiftFeedback fb;
+				fb.status = mLiftStatus;
+				mLiftActionServer->publishFeedback(fb);
+				nav2d_navigator::LiftResult r;
+				r.final_status = mLiftStatus;
+				mLiftActionServer->setSucceeded(r);
+			}
+			else{
+				ROS_ERROR("Updating LaserScan range failed.");
+				mLiftActionServer->setAborted();
+			}
+			laserScan.shutdown();
+			stop();
+			return;
+		}
+		sleep(1);
 	}
 	mLiftStatus = goal->target_status;
-	if(goal->cmd==LIFT_UP || goal->cmd==LIFT_DOWN)
-	{
-		sleep(10);
-		mCellInflationRadius = 0;
-		mRobotRadius = (goal->cmd==LIFT_DOWN ? mInitRobotRadius : mCargoRadius);
-		mCostLethal = (1.0 - (mRobotRadius / mInflationRadius)) * (double)mCostObstacle;
-
-		NodeHandle laserScan(LS_NODE);
-		laserScan.setParam("range_min", (goal->cmd==LIFT_DOWN ? mInitLSRad : mEnlargedLSRad));
-		ServiceClient updateclient = laserScan.serviceClient<std_srvs::Trigger>("updateLaserRange");
-		std_srvs::Trigger srv;
-		if(updateclient.call(srv)){
-			sleep(1);
-			ROS_INFO("Updating LaserScan range succeed.");
-			nav2d_navigator::LiftFeedback fb;
-			fb.status = mLiftStatus;
-			mLiftActionServer->publishFeedback(fb);
-			nav2d_navigator::LiftResult r;
-			r.final_status = mLiftStatus;
-			mLiftActionServer->setSucceeded(r);
-		}
-		else{
-			ROS_ERROR("Updating LaserScan range failed.");
-			mLiftActionServer->setAborted();
-		}
-		laserScan.shutdown();
-		stop();
-		return;
-	}
-	sleep(1);
 	nav2d_navigator::LiftFeedback fb;
 	fb.status = mLiftStatus;
 	mLiftActionServer->publishFeedback(fb);

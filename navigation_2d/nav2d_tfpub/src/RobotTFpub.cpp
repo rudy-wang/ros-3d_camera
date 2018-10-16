@@ -12,8 +12,8 @@ RobotTFpub::RobotTFpub()
 	// Publish / subscribe to ROS topics
 	ros::NodeHandle robotNode;
 	mSensorSubscriber = robotNode.subscribe(SENSOR_TOPIC, 5, &RobotTFpub::receiveSensor, this);
-	mOdom_pub = robotNode.advertise<nav_msgs::Odometry>("odom", 10);
-	mJoint_states_pub = robotNode.advertise<sensor_msgs::JointState>("joint_states", 10);
+	mOdom_pub = robotNode.advertise<nav_msgs::Odometry>("odom", 1);
+	mJoint_states_pub = robotNode.advertise<sensor_msgs::JointState>("joint_states", 1);
 
 	mJoint_states_name[0] = "wheel_left_joint";
 	mJoint_states_name[1] = "wheel_right_joint";
@@ -58,6 +58,7 @@ RobotTFpub::~RobotTFpub()
 
 void RobotTFpub::receiveSensor(const std_msgs::Int32MultiArray::ConstPtr& msg)
 {
+	ROS_ERROR("MOTOR1: %d, MOTOR2: %d",msg->data[0], msg->data[1]);
 	updateMotorInfo(msg->data[0], msg->data[1]);
 	publishDriveInformation(msg->data[2]);
 }

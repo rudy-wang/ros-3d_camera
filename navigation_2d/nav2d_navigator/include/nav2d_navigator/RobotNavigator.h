@@ -90,6 +90,7 @@ private:
 	bool mIsPaused;
 	bool mIsStopped;
 	bool mShortestPlan;
+	bool mIgnoreObstacle;
 	int mStatus;
 	int mRobotID;
 	unsigned int mGoalPoint;
@@ -113,6 +114,7 @@ private:
 	double mEnlargedLSRad;
 	double mInitLSRad;
 	double mSlightRate;
+	std::vector< std::vector<double> > mEucDistance;
 	unsigned int mCellInflationRadius;
 	unsigned int mCellRobotRadius;
 	unsigned int mLiftStatus;

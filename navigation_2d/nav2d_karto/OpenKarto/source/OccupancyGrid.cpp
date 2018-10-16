@@ -18,6 +18,7 @@
 #include <OpenKarto/OccupancyGrid.h>
 #include <OpenKarto/OpenMapper.h>
 #include <ros/ros.h>
+#include <omp.h>
 
 namespace karto
 {
@@ -204,7 +205,7 @@ namespace karto
     kt_double steps = math::Maximum(xSteps, ySteps);
     kt_double delta = maxRange / steps;
     kt_double distance = delta;
-
+	#pragma omp parallel for
     for (kt_int32u i = 1; i < steps; i++)
     {
       kt_double x1 = x + distance * cosTheta;
@@ -295,7 +296,7 @@ namespace karto
     kt_int32u* pCellHitCntPtr = m_pCellHitsCnt->GetDataPointer();
 
     kt_int32u nBytes = GetDataSize();
-
+	#pragma omp parallel for
     for (kt_int32u i = 0; i < nBytes; i++, pDataPtr++, pCellPassCntPtr++, pCellHitCntPtr++)
     {
       UpdateCell(pDataPtr, *pCellPassCntPtr, *pCellHitCntPtr);

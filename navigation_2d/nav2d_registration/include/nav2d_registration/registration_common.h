@@ -57,7 +57,7 @@ class Registration
 		bool roundCheck();
 		void clustering();
 		void moveOut(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
-		void regLiftupOutside(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y);
+		void regLiftupOutside(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y, bool changeflag);
 		void regLiftupUnder(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
 		
 		ros::NodeHandle nh_sta;

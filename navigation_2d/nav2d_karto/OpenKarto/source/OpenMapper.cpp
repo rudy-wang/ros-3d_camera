@@ -30,6 +30,7 @@
 #include <ros/ros.h>
 #include <OpenKarto/OpenMapper.h>
 #include <OpenKarto/Logger.h>
+#include <omp.h>
 
 namespace karto
 {
@@ -654,12 +655,12 @@ namespace karto
     void operator()(const tbb::blocked_range3d<kt_int32s, kt_int32s, kt_int32s>& rRange) const
     {      
       CorrelationGrid* pCorrelationGrid = m_pScanMatcherGridSet->m_pCorrelationGrid;
-      
+      #pragma omp parallel for
       for (tbb::blocked_range<kt_int32s>::const_iterator yIndex = rRange.pages().begin(); yIndex != rRange.pages().end(); yIndex++)
       {
         kt_double newPositionY = m_pNewPositionsY->at(yIndex);
         kt_double squareY = m_pSquaresY->at(yIndex);
-
+		#pragma omp parallel for
         for (tbb::blocked_range<kt_int32s>::const_iterator xIndex = rRange.rows().begin(); xIndex != rRange.rows().end(); xIndex++)
         {
           kt_double newPositionX = m_pNewPositionsX->at(xIndex);
@@ -670,7 +671,7 @@ namespace karto
           assert(gridIndex >= 0);
           
           kt_double squaredDistance = squareX + squareY;
-          
+          #pragma omp parallel for
           for (tbb::blocked_range<kt_int32s>::const_iterator angleIndex = rRange.cols().begin(); angleIndex != rRange.cols().end(); angleIndex++)
           {
             kt_int32u poseResponseIndex = (m_nX * m_nAngles) * yIndex + m_nAngles * xIndex + angleIndex;
@@ -743,6 +744,7 @@ namespace karto
     kt_int32u nX = static_cast<kt_int32u>(math::Round(rSearchSpaceOffset.GetX() * 2.0 / rSearchSpaceResolution.GetX()) + 1);
     std::vector<kt_double> xPoses(nX), newPositionsX(nX), squaresX(nX);
     kt_double startX = -rSearchSpaceOffset.GetX();
+	#pragma omp parallel for
     for (kt_int32u xIndex = 0; xIndex < nX; xIndex++)
     {
       kt_double x = startX + xIndex * rSearchSpaceResolution.GetX();
@@ -755,6 +757,7 @@ namespace karto
     kt_int32u nY = static_cast<kt_int32u>(math::Round(rSearchSpaceOffset.GetY() * 2.0 / rSearchSpaceResolution.GetY()) + 1);
     std::vector<kt_double> yPoses(nY), newPositionsY(nY), squaresY(nY);
     kt_double startY = -rSearchSpaceOffset.GetY();
+	#pragma omp parallel for
     for (kt_int32u yIndex = 0; yIndex < nY; yIndex++)
     {
       kt_double y = startY + yIndex * rSearchSpaceResolution.GetY();
@@ -769,6 +772,7 @@ namespace karto
     std::vector<kt_double> angles(nAngles);
     kt_double angle = 0.0;
     kt_double startAngle = rSearchCenter.GetHeading() - searchAngleOffset;
+	#pragma omp parallel for
     for (kt_int32u angleIndex = 0; angleIndex < nAngles; angleIndex++)
     {
       angle = startAngle + angleIndex * searchAngleResolution;
@@ -806,11 +810,12 @@ namespace karto
     if (gotTbb == false)
     {
       kt_int32u poseResponseCounter = 0;
+	  #pragma omp parallel for
       for (kt_int32u yIndex = 0; yIndex < nY; yIndex++)
       {
         kt_double newPositionY = newPositionsY[yIndex];
         kt_double squareY = squaresY[yIndex];
-
+		#pragma omp parallel for
         for (kt_int32u xIndex = 0; xIndex < nX; xIndex++)
         {
           kt_double newPositionX = newPositionsX[xIndex];
@@ -821,6 +826,7 @@ namespace karto
           assert(gridIndex >= 0);
 
           kt_double squaredDistance = squareX + squareY;
+		  #pragma omp parallel for
           for (kt_int32u angleIndex = 0; angleIndex < nAngles; angleIndex++)
           {
             kt_double angle = angles[angleIndex];
@@ -852,6 +858,7 @@ namespace karto
     
     // find value of best response (in [0; 1])
     kt_double bestResponse = -1;
+	#pragma omp parallel for
     for (kt_int32u i = 0; i < poseResponseSize; i++)
     {
       bestResponse = math::Maximum(bestResponse, poseResponses[i].first);
@@ -877,6 +884,7 @@ namespace karto
     kt_double thetaX = 0.0;
     kt_double thetaY = 0.0;
     kt_int32s averagePoseCount = 0;
+	#pragma omp parallel for
     for (kt_int32u i = 0; i < poseResponseSize; i++)
     {
       if (math::DoubleEqual(poseResponses[i].first, bestResponse))
@@ -972,11 +980,11 @@ namespace karto
     kt_int32u nY = static_cast<kt_int32u>(math::Round(offsetY * 2.0 / rSearchSpaceResolution.GetY()) + 1);
     kt_double startY = -offsetY;
     assert(math::DoubleEqual(startY + (nY - 1) * rSearchSpaceResolution.GetY(), -startY));
-    
+    #pragma omp parallel for
     for (kt_int32u yIndex = 0; yIndex < nY; yIndex++)
     {
       kt_double y = startY + yIndex * rSearchSpaceResolution.GetY();
-      
+      #pragma omp parallel for
       for (kt_int32u xIndex = 0; xIndex < nX; xIndex++)
       {
         kt_double x = startX + xIndex * rSearchSpaceResolution.GetX();
@@ -1051,6 +1059,7 @@ namespace karto
     
     kt_double norm = 0.0;
     kt_double accumulatedVarianceThTh = 0.0;
+	#pragma omp parallel for
     for (kt_int32u angleIndex = 0; angleIndex < nAngles; angleIndex++)
     {
       angle = startAngle + angleIndex * searchAngleResolution;
@@ -1114,6 +1123,7 @@ namespace karto
     }
 
     // then add all valid points to correlation grid
+	#pragma omp parallel for
     for (kt_size_t i = 0; i < nScans; i++)
     {
       AddScanNew(pCorrelationGrid, pValidPoints[i]);
@@ -1232,6 +1242,7 @@ namespace karto
         }
         else
         {
+		  #pragma omp parallel for
           for (; trailingPointIter != iter; trailingPointIter++)
           {
             validPoints.Add(*trailingPointIter);
@@ -1265,6 +1276,7 @@ namespace karto
     
     // calculate response
     kt_int32s* pAngleIndexPointer = pOffsets->GetArrayPointer();
+	#pragma omp parallel for
     for (kt_int32u i = 0; i < nPoints; i++)
     {
       // ignore points that fall off the grid
@@ -1722,6 +1734,7 @@ namespace karto
     
     void operator()(const tbb::blocked_range<kt_int32s>& rRange) const
     {
+	  #pragma omp parallel for
       for (kt_int32s i = rRange.begin(); i != rRange.end(); i++)
       {
         m_pWasChainLinked[i] = false;
@@ -1781,13 +1794,16 @@ namespace karto
         m_pOpenMapper->m_pLoopMatchMinimumChainSize->GetValue(),
         m_pOpenMapper->m_pLinkMatchMinimumResponseFine->GetValue());
       tbb::parallel_for(tbb::blocked_range<kt_int32s>(0, static_cast<kt_int32s>(nearChains.Size()), grainSize), myTask);
-
+	  #pragma omp parallel for
       for (kt_int32u i = 0; i < nearChains.Size(); i++)
       {
         if (pWasChainLinked[i] == true)
         {
+		  #pragma omp atomic
           rMeans.Add(means[i]);
+		  #pragma omp atomic
           rCovariances.Add(covariances[i]);
+		  #pragma omp atomic
           LinkChainToScan(nearChains[i], pScan, means[i], covariances[i]);
         }
       }
@@ -1900,6 +1916,7 @@ namespace karto
       assert(nearScanIndex >= 0);
       
       // add scans before current scan being processed
+	  
       for (kt_int32s candidateScanIndex = nearScanIndex - 1; candidateScanIndex >= 0; candidateScanIndex--)
       {
         LocalizedLaserScan* pCandidateScan = scans[candidateScanIndex];

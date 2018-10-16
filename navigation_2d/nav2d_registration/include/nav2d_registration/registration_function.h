@@ -3,14 +3,14 @@
 #define UNDER_ROTATE	15		// rotate angle per step when adjusting viewpoint under a cargo.
 #define UAGV_LENGTH	0.62		// the length of UAGV's single side.
 #define DETEC_RANGE	5		// filter out noises having higher ranges than this threshold.
-#define ANG_RANGE	180		// LIDAR's range of vision angle.
+#define ANG_RANGE	230		// LIDAR's range of vision angle.
 #define ANG_INC	 	3		// LIDAR's index increment per vision angle.
 #define STAT_RAN	0.03		// define UAGV is under a static motion when its moving range lower than this threshold.
 #define STAT_ORN	3		// define UAGV is under a static motion when its moving oriention lower than this threshold.
-#define PT_PER_M	5		// filter out noisy clusters having less points than this threshold.
-#define ANG_DIFF	2.0		// a new cluster will be created if the angles between points are wider than this threshold.(at range of 1 meter )
-#define RAN_DIFF	0.06		// a new cluster will be created if the ranges between point and 1st point of last cluster are further than this threshold.
-#define RAN_DIFF2	0.015		// a new cluster will be created if the ranges between point and last point of last cluster are further than this threshold.
+#define PT_PER_M	10		// filter out noisy clusters having less points than this threshold.
+#define SQUARE_CHECK	0.1		// a square is not a square if the difference between distance of widest points and the length of a sqaure side is larger than this threshold.
+#define RAN_DIFF	0.20		// a new cluster will be created if the ranges between point and 1st point of last cluster are further than this threshold.
+#define RAN_DIFF2	0.10		// a new cluster will be created if the ranges between point and last point of last cluster are further than this threshold.
 #define THRES		233		// points are detected as reflection plate when their intensities are higher than this threshold.
 #define PI		3.14159265	// pi is just pi
 #define REG_ST_WORKING	0
@@ -97,14 +97,14 @@ bool squareCheck( std::vector< LaserMsgLite > &refClstr, std::vector< std::vecto
 			nearestIdx1 = i;
 			nearest = refClstr[ i ].mean_range();
 		}
-		else if(refClstr[ i ].mean_range()<nearest2)
+		else if(refClstr[ i ].mean_range()<nearest2 && refClstr[ i ].mean_range()>=nearest)
 		{
 			nearestIdx2 = i;
 			nearest2 = refClstr[ i ].mean_range();
 		}
 		if( i != longestIdx1 && i != longestIdx2 )
 		{
-			if( fabs( widest - sideLen[ i ][ longestIdx1 ] * sqrt( 2 ) ) > RAN_DIFF || fabs( widest - sideLen[ i ][ longestIdx2 ] * sqrt( 2 ) ) > RAN_DIFF )
+			if( fabs( widest - sideLen[ i ][ longestIdx1 ] * sqrt( 2 ) ) > SQUARE_CHECK || fabs( widest - sideLen[ i ][ longestIdx2 ] * sqrt( 2 ) ) > SQUARE_CHECK )
 			{
 				return false;
 			}
@@ -137,6 +137,7 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 			if( fabs( orientation ) < 30 )
 			{
 				int left = 0, right = 0;
+				double leftDis = 0, rightDis = 0;
 				
 				#pragma omp parallel for
 				for( int i = 0; i < refFull.angles.size(); i++ )
@@ -150,18 +151,22 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 							{
 								#pragma omp atomic
 								right++;
+								rightDis = rightDis + refFull.ranges[ i ];
 							}
 							else
 							{
 								#pragma omp atomic
 								left++;
+								leftDis = leftDis + refFull.ranges[ i ];
 							}
 						}
 					}
 				}
-				rotateAngle = ( right > left ? 60 : -60 );
+				rightDis = (left==0?-1:rightDis/right);
+				leftDis = (right==0?-1:leftDis/left);
+				rotateAngle = ( rightDis < leftDis ? 60 : -60 );
 				moveRange = mrange / 2;
-				orientation = rotateAngle + ( right > left ? -120 : 120 );
+				orientation = rotateAngle + ( rightDis < leftDis ? -120 : 120 );
 			}
 		}
 		return false;
@@ -270,70 +275,63 @@ bool obstacleCheck( LaserMsgLite &refFull, double refR, double refA, double radi
 	}
 }
 
-void outsideMove( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, std::vector< std::vector< double > > &sideLen, double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, int &action, int &status, int &counter, double &center_x, double &center_y )
+bool outsideMove( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, std::vector< std::vector< double > > &sideLen, double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, int &action, int &status, int &counter, double &center_x, double &center_y )
 {
 	int nearestIdx, widestIdx, longestIdx1, longestIdx2, nearestIdx2;
-	double a = 0, b = 0, c = 0, widest = 0, mrange1 = 0, mrange2 = 0, mangle1 = 0, mangle2 = 0;
-	double rotateAngle = 0;
-	double moveRange = 0;
-	double orientation = 0;
 	counter = 0;
 	if( refClstr.size() == 2 )
 	{
-		nearestIdx = ( refClstr[ 1 ].mean_range() > refClstr[ 0 ].mean_range() ? 0 : 1 );
-		widestIdx = ( nearestIdx == 0 ? 1 : 0 );
-		mangle1 =  refClstr[ widestIdx ].mean_angle();
-		mangle2 = refClstr[ nearestIdx ].mean_angle();
-		widest = mangle1 - mangle2;
-		a = refClstr[ widestIdx ].mean_range();
-		b = refClstr[ nearestIdx ].mean_range();
-		c = sideLen[ widestIdx ][ nearestIdx ];
-		rotateAngle = acos( ( a - b * cos( fabs( widest ) * ( PI / 180 ) ) ) / c ) * ( 180 / PI );
-		moveRange = fabs( a * cos( rotateAngle * ( PI / 180 ) ) - 0.5 * c );
-		rotateAngle = mangle2 + widest + ( widest < 0 ?  -1 * rotateAngle : rotateAngle );
-		poseTF(last_X, last_Y, last_orientation, sensorX, moveRange, rotateAngle, new_x, new_y);
-		goal_orientation = last_orientation + ( rotateAngle + ( widest < 0 ?  90 : -90 ) ) * ( PI / 180 );
+		double x_1 = 0, x_2 = 0, x_3 = 0, y_1 = 0, y_2 = 0, y_3 = 0;
+		poseTF(last_X, last_Y, last_orientation, sensorX, refClstr[ 0 ].mean_range()+0.02, refClstr[ 0 ].mean_angle(), x_1, y_1);
+		poseTF(last_X, last_Y, last_orientation, sensorX, refClstr[ 1 ].mean_range()+0.02, refClstr[ 1 ].mean_angle(), x_2, y_2);
+		x_3 = (x_1 + x_2) * 0.5;
+		y_3 = (y_1 + y_2) * 0.5;
+		new_x = y_3 - y_1 + x_3;
+		new_y = x_1 - x_3 + y_3;
+		if(sqrt(pow(new_x-last_X,2)+pow(new_y-last_Y,2)) < sqrt(pow(x_3-last_X,2)+pow(y_3-last_Y,2)))
+		{
+			new_x = -new_x;
+			new_y = -new_y;
+		}
+		goal_orientation = atan2(new_y - y_3, new_x - x_3);
 	}
 	else if( refClstr.size() == 3 || refClstr.size() == 4 )
 	{
 		double x_1 = 0, x_2 = 0, x_3 = 0, x_4 = 0, y_1 = 0, y_2 = 0, y_3 = 0, y_4 = 0;
-		squareCheck( refClstr, sideLen, longestIdx1, longestIdx2, nearestIdx, nearestIdx2 );
+		if(!squareCheck( refClstr, sideLen, longestIdx1, longestIdx2, nearestIdx, nearestIdx2 ))
+			return false;
 		poseTF(last_X, last_Y, last_orientation, sensorX, refClstr[ longestIdx1 ].mean_range(), refClstr[ longestIdx1 ].mean_angle(), x_1, y_1);
 		poseTF(last_X, last_Y, last_orientation, sensorX, refClstr[ longestIdx2 ].mean_range(), refClstr[ longestIdx2 ].mean_angle(), x_2, y_2);
 		center_x = (x_1 + x_2)*0.5;
 		center_y = (y_1 + y_2)*0.5;
+		new_x = center_x;
+		new_y = center_y;
 		if(nearestIdx==longestIdx1 || nearestIdx==longestIdx2)
 		{
 			x_3 = (nearestIdx==longestIdx1 ? x_1 : x_2);
 			y_3 = (nearestIdx==longestIdx1 ? y_1 : y_2);
 			poseTF(last_X, last_Y, last_orientation, sensorX, refClstr[ nearestIdx2 ].mean_range(), refClstr[ nearestIdx2 ].mean_angle(), x_4, y_4);
-			new_x = x_4 - center_x + x_3;
-			new_y = y_4 - center_y + y_3;
-			goal_orientation = atan2((y_3 + y_4) * 0.5 - new_y, (x_3 + x_4) * 0.5 - new_x);
 		}
 		else
 		{
 			x_4 = (nearestIdx2==longestIdx1 ? x_1 : x_2);
 			y_4 = (nearestIdx2==longestIdx1 ? y_1 : y_2);
 			poseTF(last_X, last_Y, last_orientation, sensorX, refClstr[ nearestIdx ].mean_range(), refClstr[ nearestIdx ].mean_angle(), x_3, y_3);
-			new_x = x_3 - center_x + x_4;
-			new_y = y_3 - center_y + y_4;
-			goal_orientation = atan2((y_3 + y_4) * 0.5 - new_y, (x_3 + x_4) * 0.5 - new_x);
 		}
-		ROS_ERROR("NEWX: %f, NEWY: %f",new_x,new_y);
+		goal_orientation = atan2(center_y - (y_3 + y_4) * 0.5, center_x - (x_3 + x_4) * 0.5);
 	}
+	return true;
 }
 
-bool centerCalib( std::vector<LSPoint> &surrRef, double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation )
+bool centerCalib( LaserMsgLite &surrRef, double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation )
 {
-	if( surrRef.size() != 2 )
-	{
-		surrRef.clear();
-		ROS_ERROR( "Number of reference objects under cargo doesn't match the condition." );
-		return false;
-	}
-	new_x = ( surrRef[0].x + surrRef[1].x ) * 0.5;
-	new_y = ( surrRef[0].y + surrRef[1].y ) * 0.5;
-	goal_orientation = atan2(surrRef[1].y - surrRef[0].y, surrRef[1].x - surrRef[0].x);
+	double x_1 = 0, x_2 = 0, x_3 = 0, x_4 = 0, y_1 = 0, y_2 = 0, y_3 = 0, y_4 = 0, angDiff = (surrRef.angles[1]-surrRef.angles[0]), rangDiff = 0;
+	unsigned int index = 0, index2 = 0, index3 = 0;
+	index = round((-90-surrRef.angles[0])/angDiff);
+	index2 = round((90-surrRef.angles[0])/angDiff);
+	index3 = round((0-surrRef.angles[0])/angDiff);
+	rangDiff = surrRef.ranges[index]+sensorX-(surrRef.ranges[index]+surrRef.ranges[index2])*0.5;
+	poseTF(last_X, last_Y, last_orientation, sensorX, abs(rangDiff), (rangDiff>0?0:180), new_x, new_y);
+	goal_orientation = last_orientation+PI;
 	return true;
 }

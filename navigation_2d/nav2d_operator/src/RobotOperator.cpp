@@ -264,15 +264,16 @@ void RobotOperator::executeCommand()
 
 	// Check whether the robot is stuck
 	if(mRecoverySteps > 0) mRecoverySteps--;
-	if(safeVelocity < 0.1)
+	if(safeVelocity < 0.1 || (safeVelocity < 0.3 && mDriveMode == 2))
 	{
 		if(mDriveMode == 0)
 		{
 			mRecoverySteps = 30; // Recover for 3 seconds
 			ROS_WARN_THROTTLE(1, "Robot is stuck! Trying to recover...");
-		}else if((mDriveMode == 2))
+		}else if(mDriveMode == 2)
 		{
-			safeVelocity = 0.1;
+			ROS_ERROR("SF: %f, FS: %f, MFS: %f", safeVelocity,freeSpace,mMaxFreeSpace);
+			safeVelocity = 0.3;
 		}else
 		{
 			mCurrentVelocity = 0;

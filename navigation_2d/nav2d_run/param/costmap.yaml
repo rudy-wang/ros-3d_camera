@@ -25,8 +25,8 @@ min_obstacle_height: 0.0
 max_obstacle_height: 2.0
 raytrace_range: 3.0
 
-robot_radius: 0.5
-inflation_radius: 0.9
+robot_radius: 0.57
+inflation_radius: 1.2
 cost_scaling_factor: 20.0
 lethal_cost_threshold: 50
 observation_sources: base_scan

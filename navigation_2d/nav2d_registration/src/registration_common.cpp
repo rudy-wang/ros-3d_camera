@@ -132,24 +132,11 @@ void Registration::aborted()
 
 void Registration::moveOut( double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation)
 {
-	double moveRange = 1.0;
-	double rotateAngle = 0;
-	double orientation = 180;
-	status_ = REG_ST_WORKING;
-	if(laserCluster.size() == 1)
-	{
-		rotateAngle = laserCluster[ 0 ].mean_angle() + 45 + 180;
-	}
-	else if(laserCluster.size() == 2)
-	{
-		rotateAngle = (laserCluster[ 0 ].mean_angle() + laserCluster[ 1 ].mean_angle()) / 2 + 180;
-	}
-	
-	poseTF(last_X, last_Y, last_orientation, sensorX, moveRange, rotateAngle, new_x, new_y);
-	goal_orientation = last_orientation + orientation * ( PI / 180 );
+	poseTF(last_X, last_Y, last_orientation, sensorX, 1.5, 0, new_x, new_y);
+	goal_orientation = last_orientation;
 }
 
-void Registration::regLiftupOutside( double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y)
+void Registration::regLiftupOutside( double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y )
 {
 	double moveRange = 0;
 	double rotateAngle = 0;
@@ -165,11 +152,18 @@ void Registration::regLiftupOutside( double last_X, double last_Y, double last_o
 	}
 	if( viewCheck( laserBuffer, laserCluster, moveRange, rotateAngle, orientation, failcounter ) )
 	{
-		reset();
 		std::vector< std::vector< double > > sideLen( laserCluster.size(), std::vector< double >( laserCluster.size() ) );
 		regSideLength( laserCluster, sideLen );
-		outsideMove( laserBuffer, laserCluster, sideLen, last_X, last_Y, last_orientation, sensorX, new_x, new_y, goal_orientation, action_, status_, failcounter, center_x, center_y );
-		return;
+		if(outsideMove( laserBuffer, laserCluster, sideLen, last_X, last_Y, last_orientation, sensorX, new_x, new_y, goal_orientation, action_, status_, failcounter, center_x, center_y ))
+		{
+			reset();
+			return;
+		}
+		else
+		{
+			failcounter++;
+			return;
+		}
 	}
 	poseTF(last_X, last_Y, last_orientation, sensorX, moveRange, rotateAngle, new_x, new_y);
 	goal_orientation = last_orientation + orientation * ( PI / 180 );
@@ -179,30 +173,7 @@ void Registration::regLiftupUnder( double last_X, double last_Y, double last_ori
 {
 	status_ = REG_ST_WORKING;
 	
-	if( centerCheck( laserCluster, surrRef, last_X, last_Y, last_orientation, sensorX, new_x, new_y, goal_orientation, surcounter, failcounter ) )
-	{
-		failcounter = 0;
-		if( surcounter >= 2 )
-		{
-			ROS_INFO( "Positions of reference objects are confirmed, UAGV's calibrating under cargo now." );
-			if( !centerCalib( surrRef, last_X, last_Y, last_orientation, sensorX, new_x, new_y, goal_orientation ) )
-			{
-				reset();
-				initSurrRef();
-				status_ = REG_ST_FAILED;
-				return;
-			}
-		}
-	}
-	ROS_ERROR("ERROR: %d", failcounter);
-	if( failcounter > 260 / UNDER_ROTATE ) // a bit less than 90 degrees * waiting counter (default: 3) for slight turning in function "centerCheck"
-	{
-		reset();
-		initSurrRef();
-		status_ = REG_ST_FAILED;
-		ROS_ERROR( "Number of errors has reached the limit." );
-		return;
-	}
+	centerCalib( laserBuffer, last_X, last_Y, last_orientation, sensorX, new_x, new_y, goal_orientation );
 }
 
 void Registration::laser_cb( const sensor_msgs::LaserScan::ConstPtr& input_msg )
@@ -226,8 +197,8 @@ void Registration::clustering()
 			if( isNewCluster( tempAngle, msg.ranges[ i ], laserCluster, RAN_DIFF, RAN_DIFF2 ) )
 			{
 				if( laserCluster.size() > 0)
-					ROS_ERROR("IND: %d, SIZE: %d, THRES: %f",laserCluster.size(),laserCluster.back().angles.size(),ceil( ( 1 / laserCluster.back().mean_range() ) * PT_PER_M ));
-				if( laserCluster.size() > 0 && laserCluster.back().angles.size() < ceil( ( 1 / laserCluster.back().mean_range() ) * PT_PER_M ) )
+					ROS_ERROR("IND: %d, SIZE: %d, THRES: %f",laserCluster.size(),laserCluster.back().angles.size(),ceil( ( 1 - laserCluster.back().mean_range() / 3 ) * PT_PER_M ));
+				if( laserCluster.size() > 0 && laserCluster.back().angles.size() < ceil( ( 1 - laserCluster.back().mean_range() / 3 ) * PT_PER_M ) )
 				{
 					laserCluster.erase( laserCluster.end() );
 					if( isNewCluster( tempAngle, msg.ranges[ i ], laserCluster, RAN_DIFF, RAN_DIFF2 ) )
@@ -254,11 +225,17 @@ void Registration::clustering()
 	
 	if( laserCluster.size() > 0 )
 	{
-		ROS_ERROR("IND: %d, SIZE: %d, THRES: %f",laserCluster.size(), laserCluster.back().angles.size(),ceil( ( 1 / laserCluster.back().mean_range() ) * PT_PER_M ));
+		ROS_ERROR("IND: %d, SIZE: %d, THRES: %f",laserCluster.size(), laserCluster.back().angles.size(),ceil( ( 1 - laserCluster.back().mean_range() / 3 ) * PT_PER_M ));
 		if( laserCluster.back().angles.size() < ceil( ( 1 / laserCluster.back().mean_range() ) * PT_PER_M ) )
 		{
 			laserCluster.erase( laserCluster.end() );
 		}
 		meanDepth = meanDepth / thresCount;
 	}
+	/*
+	for(int i=0;i<laserCluster.size();i++)
+	{
+		ROS_ERROR("ANGLE: %f, DIS: %f",laserCluster[i].mean_angle(),laserCluster[i].mean_range());
+	}
+	*/
 }
