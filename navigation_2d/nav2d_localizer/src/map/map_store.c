@@ -41,7 +41,7 @@ int map_load_occ(map_t *map, const char *filename, double scale, int negate)
   FILE *file;
   char magic[3];
   int i, j;
-  int ch, occ;
+  int ch_t, occ;
   int width, height, depth;
   map_cell_t *cell;
 
@@ -62,9 +62,9 @@ int map_load_occ(map_t *map, const char *filename, double scale, int negate)
   }
 
   // Ignore comments
-  while ((ch = fgetc(file)) == '#')
+  while ((ch_t = fgetc(file)) == '#')
     while (fgetc(file) != '\n');
-  ungetc(ch, file);
+  ungetc(ch_t, file);
 
   // Read image dimensions
   if(fscanf(file, " %d %d \n %d \n", &width, &height, &depth) != 3)
@@ -91,10 +91,13 @@ int map_load_occ(map_t *map, const char *filename, double scale, int negate)
   }
 
   // Read in the image
+  #pragma omp parallel for
   for (j = height - 1; j >= 0; j--)
   {
+    #pragma omp parallel for
     for (i = 0; i < width; i++)
     {
+      int ch;
       ch = fgetc(file);
 
       // Black-on-white images

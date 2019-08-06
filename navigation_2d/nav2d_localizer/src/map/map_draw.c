@@ -41,18 +41,21 @@
 void map_draw_occ(map_t *map, rtk_fig_t *fig)
 {
   int i, j;
-  int col;
-  map_cell_t *cell;
   uint16_t *image;
-  uint16_t *pixel;
 
   image = malloc(map->size_x * map->size_y * sizeof(image[0]));
 
   // Draw occupancy
+  #pragma omp parallel for
   for (j = 0; j < map->size_y; j++)
   {
+    #pragma omp parallel for
     for (i =  0; i < map->size_x; i++)
     {
+      int col;
+      map_cell_t *cell;
+      uint16_t *pixel;
+
       cell = map->cells + MAP_INDEX(map, i, j);
       pixel = image + (j * map->size_x + i);
 
@@ -76,18 +79,21 @@ void map_draw_occ(map_t *map, rtk_fig_t *fig)
 void map_draw_cspace(map_t *map, rtk_fig_t *fig)
 {
   int i, j;
-  int col;
-  map_cell_t *cell;
   uint16_t *image;
-  uint16_t *pixel;
 
   image = malloc(map->size_x * map->size_y * sizeof(image[0]));
 
   // Draw occupancy
+  #pragma omp parallel for
   for (j = 0; j < map->size_y; j++)
   {
+    #pragma omp parallel for
     for (i =  0; i < map->size_x; i++)
     {
+      map_cell_t *cell;
+      uint16_t *pixel;
+      int col;
+
       cell = map->cells + MAP_INDEX(map, i, j);
       pixel = image + (j * map->size_x + i);
 
@@ -112,19 +118,22 @@ void map_draw_cspace(map_t *map, rtk_fig_t *fig)
 void map_draw_wifi(map_t *map, rtk_fig_t *fig, int index)
 {
   int i, j;
-  int level, col;
-  map_cell_t *cell;
   uint16_t *image, *mask;
-  uint16_t *ipix, *mpix;
 
   image = malloc(map->size_x * map->size_y * sizeof(image[0]));
   mask = malloc(map->size_x * map->size_y * sizeof(mask[0]));
 
   // Draw wifi levels
+  #pragma omp parallel for
   for (j = 0; j < map->size_y; j++)
   {
+    #pragma omp parallel for
     for (i =  0; i < map->size_x; i++)
     {
+      int level, col;
+      map_cell_t *cell;
+      uint16_t *ipix, *mpix;
+
       cell = map->cells + MAP_INDEX(map, i, j);
       ipix = image + (j * map->size_x + i);
       mpix = mask + (j * map->size_x + i);

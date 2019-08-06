@@ -365,6 +365,7 @@ void pf_kdtree_cluster(pf_kdtree_t *self)
   queue = calloc(self->node_count, sizeof(queue[0]));
 
   // Put all the leaves in a queue
+  #pragma omp parallel for
   for (i = 0; i < self->node_count; i++)
   {
     node = self->nodes + i;

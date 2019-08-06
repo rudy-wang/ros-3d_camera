@@ -28,7 +28,7 @@ public:
 	~MapInflationTool();
 	
 	void computeCaches(unsigned int radius);
-	void inflateMap(GridMap* map);
+	void inflateMap(GridMap* map, int robotIdx, std::vector< std::vector<double> > &EucDistanceTable);
 	
 private:
 	void enqueueObstacle(unsigned int index, unsigned int sx, unsigned int sy);
@@ -40,6 +40,10 @@ private:
 	unsigned int mCellInflationRadius;
 	char** mCachedCosts;
 	double ** mCachedDistances;
+	double mResolution;
+	double mMapW;
+	double mMapH;
+	double mMapCellRadius;
 	
 	std::priority_queue<CellData> mInflationQueue;
 	unsigned char* mInflationMarkers;

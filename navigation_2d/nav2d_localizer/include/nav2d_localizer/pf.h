@@ -30,6 +30,7 @@
 
 #include "nav2d_localizer/pf_vector.h"
 #include "nav2d_localizer/pf_kdtree.h"
+#include <omp.h>
 
 #ifdef __cplusplus
 extern "C" {

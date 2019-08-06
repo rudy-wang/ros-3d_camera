@@ -264,7 +264,7 @@ void RobotOperator::executeCommand()
 
 	// Check whether the robot is stuck
 	if(mRecoverySteps > 0) mRecoverySteps--;
-	if(safeVelocity < 0.1 || (safeVelocity < 0.3 && mDriveMode == 2))
+	if(safeVelocity < 0.1 || (safeVelocity < 0.2 && mDriveMode == 2))
 	{
 		if(mDriveMode == 0)
 		{
@@ -272,8 +272,8 @@ void RobotOperator::executeCommand()
 			ROS_WARN_THROTTLE(1, "Robot is stuck! Trying to recover...");
 		}else if(mDriveMode == 2)
 		{
-			ROS_ERROR("SF: %f, FS: %f, MFS: %f", safeVelocity,freeSpace,mMaxFreeSpace);
-			safeVelocity = 0.3;
+			//ROS_ERROR("SF: %f, FS: %f, MFS: %f", safeVelocity,freeSpace,mMaxFreeSpace);
+			safeVelocity = 0.2;
 		}else
 		{
 			mCurrentVelocity = 0;
@@ -372,6 +372,7 @@ void RobotOperator::executeCommand()
 		controlMsg.linear.x = velocity;
 		controlMsg.angular.z = -1.0 / r * controlMsg.linear.x;
 	}
+	//ROS_ERROR("%f, %f",controlMsg.linear.x,controlMsg.angular.z);
 	mControlPublisher.publish(controlMsg);
 }
 

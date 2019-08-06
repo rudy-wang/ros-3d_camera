@@ -33,6 +33,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
+#include <omp.h>
   
 // The basic vector
 typedef struct

@@ -9,7 +9,7 @@ int main(int argc, char **argv)
 	ros::init(argc, argv, "localize_node");
 	ros::NodeHandle n;
 
-	SelfLocalizer selfLocalizer(true);
+	SelfLocalizer selfLocalizer(false);
 
 	tf::TransformBroadcaster tfBC;
 	

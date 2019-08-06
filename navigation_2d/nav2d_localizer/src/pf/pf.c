@@ -78,7 +78,7 @@ pf_t *pf_alloc(int min_samples, int max_samples,
       
     set->sample_count = max_samples;
     set->samples = calloc(max_samples, sizeof(pf_sample_t));
-
+    #pragma omp parallel for
     for (i = 0; i < set->sample_count; i++)
     {
       sample = set->samples + i;
@@ -144,6 +144,7 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov)
   pdf = pf_pdf_gaussian_alloc(mean, cov);
     
   // Compute the new sample poses
+  #pragma omp parallel for
   for (i = 0; i < set->sample_count; i++)
   {
     sample = set->samples + i;
@@ -180,6 +181,7 @@ void pf_init_model(pf_t *pf, pf_init_model_fn_t init_fn, void *init_data)
   set->sample_count = pf->max_samples;
 
   // Compute the new sample poses
+  #pragma omp parallel for
   for (i = 0; i < set->sample_count; i++)
   {
     sample = set->samples + i;
@@ -230,6 +232,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
   {
     // Normalize weights
     double w_avg=0.0;
+    #pragma omp parallel for
     for (i = 0; i < set->sample_count; i++)
     {
       sample = set->samples + i;
@@ -254,6 +257,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     //PLAYER_WARN("pdf has zero probability");
 
     // Handle zero total
+    #pragma omp parallel for
     for (i = 0; i < set->sample_count; i++)
     {
       sample = set->samples + i;
@@ -288,6 +292,7 @@ void pf_update_resample(pf_t *pf)
   // (e.g., http://www.network-theory.co.uk/docs/gslref/GeneralDiscreteDistributions.html)
   c = (double*)malloc(sizeof(double)*(set_a->sample_count+1));
   c[0] = 0.0;
+  #pragma omp parallel for
   for(i=0;i<set_a->sample_count;i++)
     c[i+1] = c[i]+set_a->samples[i].weight;
 
@@ -348,6 +353,7 @@ void pf_update_resample(pf_t *pf)
       // Naive discrete event sampler
       double r;
       r = drand48();
+      #pragma omp parallel for
       for(i=0;i<set_a->sample_count;i++)
       {
         if((c[i] <= r) && (r < c[i+1]))
@@ -381,6 +387,7 @@ void pf_update_resample(pf_t *pf)
   //fprintf(stderr, "\n\n");
 
   // Normalize weights
+  #pragma omp parallel for
   for (i = 0; i < set_b->sample_count; i++)
   {
     sample_b = set_b->samples + i;
@@ -442,6 +449,7 @@ void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
   // Initialize cluster stats
   set->cluster_count = 0;
 
+  #pragma omp parallel for
   for (i = 0; i < set->cluster_max_count; i++)
   {
     cluster = set->clusters + i;
@@ -469,6 +477,7 @@ void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
       c[j][k] = 0.0;
   
   // Compute cluster stats
+  #pragma omp parallel for
   for (i = 0; i < set->sample_count; i++)
   {
     sample = set->samples + i;
@@ -512,6 +521,7 @@ void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
   }
 
   // Normalize
+  #pragma omp parallel for
   for (i = 0; i < set->cluster_count; i++)
   {
     cluster = set->clusters + i;
@@ -570,7 +580,7 @@ void pf_get_cep_stats(pf_t *pf, pf_vector_t *mean, double *var)
   mx = 0.0;
   my = 0.0;
   mrr = 0.0;
-  
+  #pragma omp parallel for
   for (i = 0; i < set->sample_count; i++)
   {
     sample = set->samples + i;

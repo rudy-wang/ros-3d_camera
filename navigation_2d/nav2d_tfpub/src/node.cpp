@@ -11,7 +11,7 @@ int main(int argc, char **argv)
 
 	RobotTFpub robTf;
 	
-	Rate loopRate(10);
+	Rate loopRate(50);
 	while(ok())
 	{
 		spinOnce();

@@ -1,8 +1,10 @@
 #ifndef R_C_H
 #define R_C_H
 
+#define NODE_NAME     "registration"
 #include "system_base.h"
 #include "ros_msg.h"
+#include <ros/ros.h>
 class LSPoint
 {
 	public:
@@ -57,7 +59,9 @@ class Registration
 		bool roundCheck();
 		void clustering();
 		void moveOut(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
-		void regLiftupOutside(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y, bool changeflag);
+		bool moveIn(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
+		bool moveTurn(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
+		void regLiftupOutside(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation, double &center_x, double &center_y);
 		void regLiftupUnder(double last_X, double last_Y, double last_orientation, double sensorX, double &new_x, double &new_y, double &goal_orientation);
 		
 		ros::NodeHandle nh_sta;
@@ -69,6 +73,7 @@ class Registration
 		static sensor_msgs::LaserScan msg;
 		static int action_;
 		static int status_; // 0: during registration, 1: registration fail, 2: registration success
+		static double mCargoLength;
 		static int failcounter;
 		static int surcounter;
 };

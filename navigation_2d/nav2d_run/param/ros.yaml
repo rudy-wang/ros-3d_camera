@@ -14,3 +14,7 @@ laser_topic: scan
 
 ### ROS services ##########################################
 map_service: static_map
+
+### ROS serial ##########################################
+bms_port: /dev/ttyUSBBMS
+pwrctrl_port: /dev/ttyUSBPWR

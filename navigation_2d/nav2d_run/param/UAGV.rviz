@@ -203,12 +203,10 @@ Visualization Manager:
     - Class: rviz/Select
     - Class: rviz/FocusCamera
     - Class: rviz/Measure
-    - Class: rviz/SetInitialPose
-      Topic: /initialpose
     - Class: rviz/SetGoal
-      Topic: /goal
+      Topic: /goal_tmp
     - Class: rviz/GetCargo
-      Topic: /cargo
+      Topic: /loadCargo_tmp
     - Class: rviz/PublishPoint
       Single click: true
       Topic: /clicked_point

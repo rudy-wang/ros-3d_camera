@@ -219,6 +219,7 @@ void MultiMapper::setRobotPose(double x, double y, double yaw)
 	
 	// Publish via tf
 	mState = ST_MAPPING;
+
 	publishTransform();
 }
 
@@ -323,12 +324,11 @@ void MultiMapper::receiveLaserScan(const sensor_msgs::LaserScan::ConstPtr& scan)
 			}
 		}
 		karto::Pose2 kartoPose = karto::Pose2(tfPose.getOrigin().x(), tfPose.getOrigin().y(), tf::getYaw(tfPose.getRotation()));
-		
 		// create localized laser scan
 		karto::LocalizedLaserScanPtr laserScan = createFromRosMessage(*scan, mLaser->GetIdentifier());
 		laserScan->SetOdometricPose(kartoPose);
 		laserScan->SetCorrectedPose(kartoPose);
-		
+		 
 		bool success;
 		try
 		{
@@ -412,7 +412,7 @@ bool MultiMapper::getMap(nav_msgs::GetMap::Request  &req, nav_msgs::GetMap::Resp
 }
 
 bool MultiMapper::sendMap()
-{
+{ 
 	if(!updateMap()) return false;
 	
 	// Publish the map
@@ -425,6 +425,7 @@ bool MultiMapper::sendMap()
 		// Publish the vertices
 		karto::MapperGraph::VertexList vertices = mMapper->GetGraph()->GetVertices();
 		visualization_msgs::Marker marker;
+		visualization_msgs::Marker marker2;
 		marker.header.frame_id = mMapFrame;
 		marker.header.stamp = ros::Time();
 		marker.id = 0;
@@ -445,39 +446,64 @@ bool MultiMapper::sendMap()
 		marker.color.g = 1.0;
 		marker.color.b = 0.0;
 		marker.points.resize(vertices.Size());
+		//#pragma omp parallel for
+		//for(int i = 0; i < vertices.Size(); i++)
+		//{
+		//	marker.points[i].x = vertices[i]->GetVertexObject()->GetCorrectedPose().GetX();
+		//	marker.points[i].y = vertices[i]->GetVertexObject()->GetCorrectedPose().GetY();
+		//	marker.points[i].z = 0;
+		//}
+		//mVerticesPublisher.publish(marker);
+		
+		// Publish the edges
+		karto::MapperGraph::EdgeList edges = mMapper->GetGraph()->GetEdges();
+		marker2.header.frame_id = mMapFrame;
+		marker2.header.stamp = ros::Time();
+		marker2.id = 0;
+		marker2.type = visualization_msgs::Marker::LINE_LIST;
+		marker2.action = visualization_msgs::Marker::ADD;
+		marker2.pose.position.x = 0;
+		marker2.pose.position.y = 0;
+		marker2.pose.position.z = 0;
+		marker2.pose.orientation.x = 0.0;
+		marker2.pose.orientation.y = 0.0;
+		marker2.pose.orientation.z = 0.0;
+		marker2.pose.orientation.w = 1.0;
+		marker2.scale.x = 0.01;
+		marker2.scale.y = 0.1;
+		marker2.scale.z = 0.1;
+		marker2.color.a = 1.0;
+		marker2.color.r = 1.0;
+		marker2.color.g = 0.0;
+		marker2.color.b = 0.0;
+		marker2.points.resize(edges.Size() * 2);
 		#pragma omp parallel for
-		for(int i = 0; i < vertices.Size(); i++)
+		for(int i = 0; i < edges.Size(); i++)
+		{
+			if(i<vertices.Size())
+			{
+				marker.points[i].x = vertices[i]->GetVertexObject()->GetCorrectedPose().GetX();
+				marker.points[i].y = vertices[i]->GetVertexObject()->GetCorrectedPose().GetY();
+				marker.points[i].z = 0;
+			}
+
+			marker2.points[2*i].x = edges[i]->GetSource()->GetVertexObject()->GetCorrectedPose().GetX();
+			marker2.points[2*i].y = edges[i]->GetSource()->GetVertexObject()->GetCorrectedPose().GetY();
+			marker2.points[2*i].z = 0;
+
+			marker2.points[2*i+1].x = edges[i]->GetTarget()->GetVertexObject()->GetCorrectedPose().GetX();
+			marker2.points[2*i+1].y = edges[i]->GetTarget()->GetVertexObject()->GetCorrectedPose().GetY();
+			marker2.points[2*i+1].z = 0;
+		}
+		#pragma omp parallel for
+		for(int i = edges.Size(); i < vertices.Size(); i++)
 		{
 			marker.points[i].x = vertices[i]->GetVertexObject()->GetCorrectedPose().GetX();
 			marker.points[i].y = vertices[i]->GetVertexObject()->GetCorrectedPose().GetY();
 			marker.points[i].z = 0;
 		}
 		mVerticesPublisher.publish(marker);
-		
-		// Publish the edges
-		karto::MapperGraph::EdgeList edges = mMapper->GetGraph()->GetEdges();
-		marker.header.frame_id = mMapFrame;
-		marker.header.stamp = ros::Time();
-		marker.id = 0;
-		marker.type = visualization_msgs::Marker::LINE_LIST;
-		marker.scale.x = 0.01;
-		marker.color.a = 1.0;
-		marker.color.r = 1.0;
-		marker.color.g = 0.0;
-		marker.color.b = 0.0;
-		marker.points.resize(edges.Size() * 2);
-		#pragma omp parallel for
-		for(int i = 0; i < edges.Size(); i++)
-		{
-			marker.points[2*i].x = edges[i]->GetSource()->GetVertexObject()->GetCorrectedPose().GetX();
-			marker.points[2*i].y = edges[i]->GetSource()->GetVertexObject()->GetCorrectedPose().GetY();
-			marker.points[2*i].z = 0;
-
-			marker.points[2*i+1].x = edges[i]->GetTarget()->GetVertexObject()->GetCorrectedPose().GetX();
-			marker.points[2*i+1].y = edges[i]->GetTarget()->GetVertexObject()->GetCorrectedPose().GetY();
-			marker.points[2*i+1].z = 0;
-		}
-		mEdgesPublisher.publish(marker);
+		mEdgesPublisher.publish(marker2);
 	}
 	return true;
 }

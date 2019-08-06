@@ -106,6 +106,8 @@
     <File Name="src/RobotNavigator.cpp"/>
     <File Name="src/explore_client.cpp"/>
     <File Name="src/registration_client.cpp"/>
+    <File Name="src/lift_client.cpp"/>
+    <File Name="src/schedule_client.cpp"/>
     <File Name="src/get_map_client.cpp"/>
     <File Name="src/navigator.cpp"/>
     <File Name="src/set_goal_client.cpp"/>
@@ -114,6 +116,7 @@
   <VirtualDirectory Name="action">
     <File Name="action/Explore.action"/>
     <File Name="action/Registration.action"/>
+    <File Name="action/Lift.action"/>
     <File Name="action/GetFirstMap.action"/>
     <File Name="action/Localize.action"/>
     <File Name="action/MoveToPosition2D.action"/>

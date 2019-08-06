@@ -520,7 +520,6 @@ namespace karto
     
     // 1. get scan position
     Pose2 scanPose = pScan->GetSensorPose();
-    
     // scan has no readings; cannot do scan matching
     // best guess of pose is based off of adjusted odometer reading
     if (pScan->GetPointReadings(true).Size() == 0)
@@ -566,8 +565,8 @@ namespace karto
     Vector2d coarseSearchResolution(2 * pCorrelationGrid->GetResolution(), 2 * pCorrelationGrid->GetResolution());
     
     // actual scan-matching
-    kt_double bestResponse = CorrelateScan(pScanMatcherGridSet, pScan, scanPose,	coarseSearchOffset, coarseSearchResolution, m_pOpenMapper->m_pCoarseSearchAngleOffset->GetValue(), m_pOpenMapper->m_pCoarseAngleResolution->GetValue(), doPenalize, rMean, rCovariance, false);
-    
+    kt_double bestResponse = CorrelateScan(pScanMatcherGridSet, pScan, scanPose, coarseSearchOffset, coarseSearchResolution, m_pOpenMapper->m_pCoarseSearchAngleOffset->GetValue(), m_pOpenMapper->m_pCoarseAngleResolution->GetValue(), doPenalize, rMean, rCovariance, false);
+   
     if (m_pOpenMapper->m_pUseResponseExpansion->GetValue() == true)
     {
       if (math::DoubleEqual(bestResponse, 0.0))
@@ -580,8 +579,7 @@ namespace karto
         for (kt_int32u i = 0; i < 3; i++)
         {
           newSearchAngleOffset += math::DegreesToRadians(20);
-          
-          bestResponse = CorrelateScan(pScanMatcherGridSet, pScan, scanPose,	coarseSearchOffset, coarseSearchResolution, newSearchAngleOffset, m_pOpenMapper->m_pCoarseAngleResolution->GetValue(), doPenalize, rMean, rCovariance, false);
+          bestResponse = CorrelateScan(pScanMatcherGridSet, pScan, scanPose, coarseSearchOffset, coarseSearchResolution, newSearchAngleOffset, m_pOpenMapper->m_pCoarseAngleResolution->GetValue(), doPenalize, rMean, rCovariance, false);
           
           if (math::DoubleEqual(bestResponse, 0.0) == false)
           {
@@ -744,7 +742,7 @@ namespace karto
     kt_int32u nX = static_cast<kt_int32u>(math::Round(rSearchSpaceOffset.GetX() * 2.0 / rSearchSpaceResolution.GetX()) + 1);
     std::vector<kt_double> xPoses(nX), newPositionsX(nX), squaresX(nX);
     kt_double startX = -rSearchSpaceOffset.GetX();
-	#pragma omp parallel for
+    #pragma omp parallel for
     for (kt_int32u xIndex = 0; xIndex < nX; xIndex++)
     {
       kt_double x = startX + xIndex * rSearchSpaceResolution.GetX();
@@ -757,7 +755,7 @@ namespace karto
     kt_int32u nY = static_cast<kt_int32u>(math::Round(rSearchSpaceOffset.GetY() * 2.0 / rSearchSpaceResolution.GetY()) + 1);
     std::vector<kt_double> yPoses(nY), newPositionsY(nY), squaresY(nY);
     kt_double startY = -rSearchSpaceOffset.GetY();
-	#pragma omp parallel for
+    #pragma omp parallel for
     for (kt_int32u yIndex = 0; yIndex < nY; yIndex++)
     {
       kt_double y = startY + yIndex * rSearchSpaceResolution.GetY();
@@ -772,7 +770,7 @@ namespace karto
     std::vector<kt_double> angles(nAngles);
     kt_double angle = 0.0;
     kt_double startAngle = rSearchCenter.GetHeading() - searchAngleOffset;
-	#pragma omp parallel for
+    #pragma omp parallel for
     for (kt_int32u angleIndex = 0; angleIndex < nAngles; angleIndex++)
     {
       angle = startAngle + angleIndex * searchAngleResolution;
@@ -810,12 +808,12 @@ namespace karto
     if (gotTbb == false)
     {
       kt_int32u poseResponseCounter = 0;
-	  #pragma omp parallel for
+      #pragma omp parallel for
       for (kt_int32u yIndex = 0; yIndex < nY; yIndex++)
       {
         kt_double newPositionY = newPositionsY[yIndex];
         kt_double squareY = squaresY[yIndex];
-		#pragma omp parallel for
+        #pragma omp parallel for
         for (kt_int32u xIndex = 0; xIndex < nX; xIndex++)
         {
           kt_double newPositionX = newPositionsX[xIndex];
@@ -826,7 +824,7 @@ namespace karto
           assert(gridIndex >= 0);
 
           kt_double squaredDistance = squareX + squareY;
-		  #pragma omp parallel for
+          #pragma omp parallel for
           for (kt_int32u angleIndex = 0; angleIndex < nAngles; angleIndex++)
           {
             kt_double angle = angles[angleIndex];
@@ -858,7 +856,7 @@ namespace karto
     
     // find value of best response (in [0; 1])
     kt_double bestResponse = -1;
-	#pragma omp parallel for
+    #pragma omp parallel for
     for (kt_int32u i = 0; i < poseResponseSize; i++)
     {
       bestResponse = math::Maximum(bestResponse, poseResponses[i].first);
@@ -884,7 +882,7 @@ namespace karto
     kt_double thetaX = 0.0;
     kt_double thetaY = 0.0;
     kt_int32s averagePoseCount = 0;
-	#pragma omp parallel for
+    #pragma omp parallel for reduction( +:averagePosition,thetaX,thetaY,averagePoseCount)
     for (kt_int32u i = 0; i < poseResponseSize; i++)
     {
       if (math::DoubleEqual(poseResponses[i].first, bestResponse))
@@ -951,7 +949,6 @@ namespace karto
   {
     // reset covariance to identity matrix
     rCovariance.SetToIdentity();
-    
     // if best response is vary small return max variance
     if (bestResponse < KT_TOLERANCE)
     {
@@ -980,11 +977,11 @@ namespace karto
     kt_int32u nY = static_cast<kt_int32u>(math::Round(offsetY * 2.0 / rSearchSpaceResolution.GetY()) + 1);
     kt_double startY = -offsetY;
     assert(math::DoubleEqual(startY + (nY - 1) * rSearchSpaceResolution.GetY(), -startY));
-    #pragma omp parallel for
+    #pragma omp parallel for reduction( +:accumulatedVarianceXX,accumulatedVarianceXY,accumulatedVarianceYY,norm)
     for (kt_int32u yIndex = 0; yIndex < nY; yIndex++)
     {
       kt_double y = startY + yIndex * rSearchSpaceResolution.GetY();
-      #pragma omp parallel for
+      #pragma omp parallel for reduction( +:accumulatedVarianceXX,accumulatedVarianceXY,accumulatedVarianceYY,norm)
       for (kt_int32u xIndex = 0; xIndex < nX; xIndex++)
       {
         kt_double x = startX + xIndex * rSearchSpaceResolution.GetX();
@@ -1359,7 +1356,6 @@ namespace karto
 
       toVisit.push(pStartVertex);
       seenVertices.insert(pStartVertex);
-
       do
       {
         Vertex<T>* pNext = toVisit.front();
@@ -1390,7 +1386,6 @@ namespace karto
       {
         objects.Add((*iter)->GetVertexObject());
       }
-
       return objects;
     }
 
@@ -1794,16 +1789,12 @@ namespace karto
         m_pOpenMapper->m_pLoopMatchMinimumChainSize->GetValue(),
         m_pOpenMapper->m_pLinkMatchMinimumResponseFine->GetValue());
       tbb::parallel_for(tbb::blocked_range<kt_int32s>(0, static_cast<kt_int32s>(nearChains.Size()), grainSize), myTask);
-	  #pragma omp parallel for
       for (kt_int32u i = 0; i < nearChains.Size(); i++)
       {
         if (pWasChainLinked[i] == true)
         {
-		  #pragma omp atomic
           rMeans.Add(means[i]);
-		  #pragma omp atomic
           rCovariances.Add(covariances[i]);
-		  #pragma omp atomic
           LinkChainToScan(nearChains[i], pScan, means[i], covariances[i]);
         }
       }
@@ -2307,7 +2298,7 @@ namespace karto
       m_pMapperSensorManager->RegisterSensor(pLaserRangeFinder->GetIdentifier());
       return true;
     }
-    
+ 
     LocalizedObject* pLocalizedObject = dynamic_cast<LocalizedObject*>(pObject);
     if (pLocalizedObject != NULL)
     {
@@ -2368,13 +2359,15 @@ namespace karto
       covariance.SetToIdentity();
       
       // correct scan (if not first scan)
+      //*
       if (m_pUseScanMatching->GetValue() && pLastScan != NULL)
       {
         Pose2 bestPose;
         m_pSequentialScanMatcher->MatchScan(pScan, m_pMapperSensorManager->GetRunningScans(pScan->GetSensorIdentifier()), bestPose, covariance);
         pScan->SetSensorPose(bestPose);
       }
-      
+      //*/
+
       ScanMatched(pScan);
       
       // add scan to buffer and assign id

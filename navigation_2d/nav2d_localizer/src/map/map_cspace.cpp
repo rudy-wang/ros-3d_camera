@@ -132,9 +132,11 @@ void map_update_cspace(map_t *map, double max_occ_dist)
   // Enqueue all the obstacle cells
   CellData cell;
   cell.map_ = map;
+  #pragma omp parallel for
   for(int i=0; i<map->size_x; i++)
   {
     cell.src_i_ = cell.i_ = i;
+    #pragma omp parallel for
     for(int j=0; j<map->size_y; j++)
     {
       if(map->cells[MAP_INDEX(map, i, j)].occ_state == +1)

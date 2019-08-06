@@ -53,7 +53,7 @@ void pf_draw_samples(pf_t *pf, rtk_fig_t *fig, int max_samples)
 
   set = pf->sets + pf->current_set;
   max_samples = MIN(max_samples, set->sample_count);
-
+  #pragma omp parallel for
   for (i = 0; i < max_samples; i++)
   {
     sample = set->samples + i;
@@ -115,7 +115,7 @@ void pf_draw_cluster_stats(pf_t *pf, rtk_fig_t *fig)
   double weight, o, d1, d2;
 
   set = pf->sets + pf->current_set;
-
+  #pragma omp parallel for
   for (i = 0; i < set->cluster_count; i++)
   {
     cluster = set->clusters + i;

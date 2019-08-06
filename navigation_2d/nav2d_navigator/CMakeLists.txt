@@ -54,7 +54,7 @@ catkin_package(
     geometry_msgs
     nav2d_msgs
     nav2d_operator
-	std_msgs
+    std_msgs
 )
 
 ###########
@@ -76,6 +76,7 @@ add_executable(set_goal_client src/set_goal_client.cpp)
 add_executable(explore_client src/explore_client.cpp)
 add_executable(registration_client src/registration_client.cpp)
 add_executable(lift_client src/lift_client.cpp)
+add_executable(schedule_client src/schedule_client.cpp)
 add_executable(get_map_client src/get_map_client.cpp)
 add_executable(localize_client src/localize_client.cpp)
 
@@ -87,6 +88,7 @@ add_dependencies(set_goal_client nav2d_navigator_generate_messages_cpp ${catkin_
 add_dependencies(explore_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(registration_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(lift_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
+add_dependencies(schedule_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(get_map_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 add_dependencies(localize_client nav2d_navigator_generate_messages_cpp ${catkin_EXPORTED_TARGETS})
 
@@ -97,6 +99,7 @@ target_link_libraries(set_goal_client ${catkin_LIBRARIES})
 target_link_libraries(explore_client ${catkin_LIBRARIES})
 target_link_libraries(registration_client ${catkin_LIBRARIES})
 target_link_libraries(lift_client ${catkin_LIBRARIES})
+target_link_libraries(schedule_client ${catkin_LIBRARIES})
 target_link_libraries(get_map_client ${catkin_LIBRARIES})
 target_link_libraries(localize_client ${catkin_LIBRARIES})
 
@@ -117,6 +120,7 @@ install(
     explore_client
     registration_client
     lift_client
+    schedule_client
     get_map_client
     localize_client
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

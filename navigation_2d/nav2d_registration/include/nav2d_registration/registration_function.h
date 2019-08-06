@@ -1,9 +1,9 @@
 #define DETEC_INTENSITY	130		// filter out noises having lower intensities than this threshold.
-#define CARGO_LENGTH	1.05		// the length of cargo's single side.
+#define CARGO_LENGTH	1.10		// the length of cargo's single side.
 #define UNDER_ROTATE	15		// rotate angle per step when adjusting viewpoint under a cargo.
 #define UAGV_LENGTH	0.62		// the length of UAGV's single side.
 #define DETEC_RANGE	5		// filter out noises having higher ranges than this threshold.
-#define ANG_RANGE	230		// LIDAR's range of vision angle.
+#define ANG_RANGE	240		// LIDAR's range of vision angle.
 #define ANG_INC	 	3		// LIDAR's index increment per vision angle.
 #define STAT_RAN	0.03		// define UAGV is under a static motion when its moving range lower than this threshold.
 #define STAT_ORN	3		// define UAGV is under a static motion when its moving oriention lower than this threshold.
@@ -17,9 +17,8 @@
 #define REG_ST_SUCCEED	1
 #define REG_ST_FAILED	2
 #define REG_ACT_MOVE	0
-#define REG_ACT_OUTSIDE	1
-#define REG_ACT_UNDER	2
-#define REG_ACT_FINISH	3
+#define REG_ACT_LOAD	1
+#define REG_ACT_UNLOAD	2
 
 void poseTF(double last_X, double last_Y, double last_orientation, double sensorX, double input_range, double input_angle, double &new_x, double &new_y)
 {
@@ -139,7 +138,7 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 				int left = 0, right = 0;
 				double leftDis = 0, rightDis = 0;
 				
-				#pragma omp parallel for
+				#pragma omp parallel for reduction( +:right,rightDis,left,leftDis)
 				for( int i = 0; i < refFull.angles.size(); i++ )
 				{
 					if( refFull.intensities[ i ] > DETEC_INTENSITY )
@@ -149,14 +148,12 @@ bool viewCheck( LaserMsgLite &refFull, std::vector< LaserMsgLite > &refClstr, do
 						{
 							if( mangle - refFull.angles[ i ] > 0 )
 							{
-								#pragma omp atomic
-								right++;
+								right+=1;
 								rightDis = rightDis + refFull.ranges[ i ];
 							}
 							else
 							{
-								#pragma omp atomic
-								left++;
+								left+=1;
 								leftDis = leftDis + refFull.ranges[ i ];
 							}
 						}
@@ -238,25 +235,23 @@ bool obstacleCheck( LaserMsgLite &refFull, double refR, double refA, double radi
 	int count = 0;
 	if( disType == 0 )
 	{
-		#pragma omp parallel for
+		#pragma omp parallel for reduction( +:count)
 		for( int i = 0; i < refFull.angles.size(); i++ )
 		{
 			if( refFull.intensities[ i ] > DETEC_INTENSITY && calcEucDistance( refFull.ranges[ i ], refFull.angles[ i ], refR, refA ) < radius )
 			{
-				#pragma omp atomic
-				count++;
+				count+=1;
 			}
 		}
 	}
 	else if( disType == 1 )
 	{
-		#pragma omp parallel for
+		#pragma omp parallel for reduction( +:count)
 		for( int i = 0; i < refFull.angles.size(); i++ )
 		{
 			if( refFull.intensities[ i ] > DETEC_INTENSITY && calcManDistance( refFull.ranges[ i ], refFull.angles[ i ], refR, refA ) < radius )
 			{
-				#pragma omp atomic
-				count++;
+				count+=1;
 			}
 		}
 	}
@@ -331,7 +326,7 @@ bool centerCalib( LaserMsgLite &surrRef, double last_X, double last_Y, double la
 	index2 = round((90-surrRef.angles[0])/angDiff);
 	index3 = round((0-surrRef.angles[0])/angDiff);
 	rangDiff = surrRef.ranges[index]+sensorX-(surrRef.ranges[index]+surrRef.ranges[index2])*0.5;
-	poseTF(last_X, last_Y, last_orientation, sensorX, abs(rangDiff), (rangDiff>0?0:180), new_x, new_y);
+	poseTF(last_X, last_Y, last_orientation, sensorX, fabs(rangDiff), (rangDiff>0?0:180), new_x, new_y);
 	goal_orientation = last_orientation+PI;
 	return true;
 }

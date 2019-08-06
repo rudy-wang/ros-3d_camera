@@ -28,6 +28,19 @@ typedef actionlib::SimpleActionServer<nav2d_navigator::GetFirstMapAction> GetMap
 typedef actionlib::SimpleActionServer<nav2d_navigator::LocalizeAction> LocalizeActionServer;
 typedef pluginlib::ClassLoader<ExplorationPlanner> PlanLoader;
 
+class NavSchedule
+{
+public:
+	NavSchedule(std::string _topic, geometry_msgs::PoseStamped _msg) : p_topic(_topic), p_msg(_msg){}
+	~NavSchedule(){}
+	std::string topic(){return p_topic;}
+	geometry_msgs::PoseStamped msg(){return p_msg;}
+	
+private:
+	std::string p_topic;
+	geometry_msgs::PoseStamped p_msg;
+};
+
 class RobotNavigator
 {
 public:
@@ -36,6 +49,7 @@ public:
 
 	bool receiveStop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
 	bool receivePause(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
+	bool receiveRunSchedule(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
 	void receiveMoveGoal(const nav2d_navigator::MoveToPosition2DGoal::ConstPtr &goal);
 	void receiveExploreGoal(const nav2d_navigator::ExploreGoal::ConstPtr &goal);
 	void receiveRegistrationGoal(const nav2d_navigator::RegistrationGoal::ConstPtr &goal);
@@ -53,11 +67,12 @@ private:
 	bool preparePlan();
 	bool createPlan();
 	void publishPlan();
-
+	static void receiveNavTask(const geometry_msgs::PoseStamped::ConstPtr& msg);
+	static void receiveLoadTask(const geometry_msgs::PoseStamped::ConstPtr& msg);
+	
 	// Everything related to ROS
 	tf::TransformListener mTfListener;
 	ros::ServiceClient mGetMapClient;
-	ros::Subscriber mGoalSubscriber;
 	ros::Publisher mPlanPublisher;
 	ros::Publisher mCommandPublisher;
 	ros::Publisher mMarkerPublisher;
@@ -84,16 +99,19 @@ private:
 	LocalizeActionServer* mLocalizeActionServer;
 
 	PlanLoader* mPlanLoader;
-
+	static std::vector< NavSchedule > mSchedule;
+	
 	// Current status and goals
 	bool mHasNewMap;
 	bool mIsPaused;
 	bool mIsStopped;
 	bool mShortestPlan;
 	bool mIgnoreObstacle;
+	bool mAbortSchedule;
 	int mStatus;
 	int mRobotID;
 	unsigned int mGoalPoint;
+	unsigned int mLastTarget;
 	unsigned int mStartPoint;
 	double mCurrentDirection;
 	double mCurrentPositionX;
@@ -104,8 +122,10 @@ private:
 	std::string mExplorationStrategy;
 	boost::shared_ptr<ExplorationPlanner> mExplorationPlanner;
 	GridMap mCurrentMap;
+	double* mLastPlan;
 	double* mCurrentPlan;
 
+	double mFrequency;
 	double mInflationRadius;
 	double mInitRobotRadius;
 	double mRobotRadius;
@@ -114,10 +134,16 @@ private:
 	double mEnlargedLSRad;
 	double mInitLSRad;
 	double mSlightRate;
+	double mSlightRad;
+	double mSlightDis;
+	double mLastNavVel;
+	double mLastNavDir;
 	std::vector< std::vector<double> > mEucDistance;
+	std::vector< std::vector<int> > mMatrix;
 	unsigned int mCellInflationRadius;
 	unsigned int mCellRobotRadius;
 	unsigned int mLiftStatus;
+	unsigned int mLastNavMode;
 	bool mStaticMap;
 
 	char mCostObstacle;
@@ -132,4 +158,5 @@ private:
 	double mRegistrationGoalAngle;
 	double mMinReplanningPeriod;
 	double mMaxReplanningPeriod;
+	double mFullSpeedDis;
 };

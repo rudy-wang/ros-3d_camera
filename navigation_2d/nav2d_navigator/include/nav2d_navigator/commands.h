@@ -4,6 +4,8 @@
 
 #define NAV_STOP_SERVICE		"Stop"
 #define NAV_PAUSE_SERVICE		"Pause"
+#define NAV_SCHEDULE_SERVICE		"RunSchedule"
+#define NAV_LOOPSCHEDULE_SERVICE	"LoopSchedule"
 #define NAV_EXPLORE_SERVICE		"StartExploration"
 #define NAV_REGISTRATION_SERVICE	"StartRegistration"
 #define NAV_LIFTUP_SERVICE		"LiftUp"

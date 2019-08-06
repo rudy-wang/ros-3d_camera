@@ -1106,7 +1106,7 @@ namespace karto
      * @return strength of response
      */
     kt_double MatchScan(LocalizedLaserScan* pScan, const LocalizedLaserScanList& rBaseScans, Pose2& rMean, Matrix3& rCovariance,
-                        kt_bool doPenalize = true, kt_bool doRefineMatch = true);
+                        kt_bool doPenalize = false, kt_bool doRefineMatch = true);
     
     /**
      * Finds the best pose for the scan centering the search in the correlation grid

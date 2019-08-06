@@ -14,7 +14,9 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <run_depend>nav2d_msgs</run_depend>
-  <run_depend>nav2d_tutorials</run_depend>
+  <run_depend>nav2d_tfpub</run_depend>
+  <run_depend>nav2d_comm</run_depend>
+  <run_depend>nav2d_run</run_depend>
   <run_depend>nav2d_operator</run_depend>
   <run_depend>nav2d_navigator</run_depend>
   <run_depend>nav2d_localizer</run_depend>

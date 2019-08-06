@@ -2,16 +2,16 @@
 #map_inflation_radius: 0.9
 #robot_radius: 0.6
 map_inflation_radius: 0.9
-robot_radius: 0.6
+robot_radius: 0.3
 min_replanning_period: 3.0
 max_replanning_period: 1.0
 laser_topic: scan
 
 # Tolerance in target position for MoveToPosition2D (meter)
-navigation_goal_distance: 0.1
+navigation_goal_distance: 0.3
 
 # Toleranvce in target heading for MoveToPosition2D (radians)
-navigation_goal_angle: 0.1
+navigation_goal_angle: 0.3
 
 # Distance at which to turn off obstacle avoidance (meter)
 navigation_homing_distance: 0.3

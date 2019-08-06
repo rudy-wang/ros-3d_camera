@@ -8,10 +8,12 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <geometry_msgs/PoseArray.h>
 #include <sensor_msgs/LaserScan.h>
+#include <std_srvs/Trigger.h>
 
 #include <nav2d_localizer/map.h>
 #include <nav2d_localizer/pf.h>
 #include <nav2d_localizer/pf_pdf.h>
+#define NAV_LOCALIZE_SERVICE "TriggreLocalize"
 
 class OdometryData
 {
@@ -125,11 +127,13 @@ private:
 	
 	bool mPublishParticles;
 	bool mFirstScanReceived;
+	static bool mLocalizeTrigger;
 	
 	int mLaserModelType; // 1 = beam, 2 = likelihood field
 	
 	pf_sensor_model_fn_t mSensorModelFunction;
 	pf_action_model_fn_t mActionModelFunction;
+	static bool triggerLocalize(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res);
 };
 
 #endif

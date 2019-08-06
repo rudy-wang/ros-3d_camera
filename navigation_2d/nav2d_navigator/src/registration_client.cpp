@@ -11,37 +11,22 @@ typedef actionlib::SimpleActionClient<nav2d_navigator::RegistrationAction> Regis
 
 RegistrationClient* gRegistrationClient;
 
-void receiveLoadCommand(const geometry_msgs::PointStamped::ConstPtr& msg)
+void receiveLoadCommand(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
 	nav2d_navigator::RegistrationGoal goal;
-	goal.target_pose.x = msg->point.x;
-	goal.target_pose.y = msg->point.y;
-	goal.target_pose.theta = 0;
-	goal.action = 1;
+	goal.target_pose.x = msg->pose.position.x;
+	goal.target_pose.y = msg->pose.position.y;
+	goal.target_pose.theta = tf::getYaw(msg->pose.orientation);
 	goal.target_distance = 0;
 	goal.target_angle = 0;
 	gRegistrationClient->sendGoal(goal);
 }
-
-void receiveUnloadCommand(const geometry_msgs::PointStamped::ConstPtr& msg)
-{
-	nav2d_navigator::RegistrationGoal goal;
-	goal.target_pose.x = msg->point.x;
-	goal.target_pose.y = msg->point.y;
-	goal.target_pose.theta = 0;
-	goal.action = 0;
-	goal.target_distance = 0.1;
-	goal.target_angle = 3.1415926;
-	gRegistrationClient->sendGoal(goal);
-}
-
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "Registration");
 	ros::NodeHandle n;
 
 	ros::Subscriber goalSubscriberLoad = n.subscribe("loadCargo", 1, &receiveLoadCommand);
-	ros::Subscriber goalSubscriberUnload = n.subscribe("unloadCargo", 1, &receiveUnloadCommand);
 	
 	gRegistrationClient = new RegistrationClient(NAV_REGISTRATION_ACTION, true);
 	gRegistrationClient->waitForServer();

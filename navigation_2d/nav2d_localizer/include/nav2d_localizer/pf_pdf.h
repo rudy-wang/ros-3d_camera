@@ -29,6 +29,7 @@
 #define PF_PDF_H
 
 #include "nav2d_localizer/pf_vector.h"
+#include <omp.h>
 
 //#include <gsl/gsl_rng.h>
 //#include <gsl/gsl_randist.h>

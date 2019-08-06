@@ -3,6 +3,7 @@
 #include <tf/transform_listener.h>
 #include <math.h>
 #include <omp.h>
+
 bool isNaN(double a)
 {
 	//return (a != a);
@@ -72,6 +73,7 @@ double SelfLocalizer::sAlpha1;
 double SelfLocalizer::sAlpha2;
 double SelfLocalizer::sAlpha3;
 double SelfLocalizer::sAlpha4;
+bool SelfLocalizer::mLocalizeTrigger;
 
 pf_vector_t SelfLocalizer::sLaserPose;
 
@@ -87,7 +89,8 @@ SelfLocalizer::SelfLocalizer(bool publish)
 	globalNode.param("robot_frame", mRobotFrame, std::string("robot"));
 	globalNode.param("odometry_frame", mOdometryFrame, std::string("odometry_base"));
 	globalNode.param("map_frame", mMapFrame, std::string("map"));
-	
+	ros::ServiceServer localizeServer = globalNode.advertiseService(NAV_LOCALIZE_SERVICE, &triggerLocalize);
+
 	ros::NodeHandle localNode("~/");
 	localNode.param("min_particles", mMinParticles, 500);
 	localNode.param("max_particles", mMaxParticles, 2500);
@@ -141,6 +144,7 @@ SelfLocalizer::SelfLocalizer(bool publish)
 	// Use squared distance so we don't need sqrt() later
 	mMinTranslation *= mMinTranslation;
 	mMapToOdometry.setIdentity();
+	mLocalizeTrigger = false;
 }
 
 SelfLocalizer::~SelfLocalizer()
@@ -149,6 +153,11 @@ SelfLocalizer::~SelfLocalizer()
 		pf_free(mParticleFilter);
 	if(sMap)	
 		map_free(sMap);
+}
+
+bool SelfLocalizer::triggerLocalize(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
+{
+	mLocalizeTrigger = true;
 }
 
 pf_vector_t SelfLocalizer::distributeParticles(void* data)
@@ -183,9 +192,8 @@ pf_vector_t SelfLocalizer::distributeParticles(void* data)
 double SelfLocalizer::calculateMoveModel(OdometryData* data, pf_sample_set_t* set)
 {
 	// Implement sample_motion_odometry (Prob Rob p 136)
-	double delta_rot1, delta_trans, delta_rot2;
-	double delta_rot1_hat, delta_trans_hat, delta_rot2_hat;
 	double delta_rot1_noise, delta_rot2_noise;
+	double delta_rot1, delta_trans, delta_rot2;
 
 	// Avoid computing a bearing from two poses that are extremely near each
 	// other (happens on in-place rotation).
@@ -205,6 +213,7 @@ double SelfLocalizer::calculateMoveModel(OdometryData* data, pf_sample_set_t* se
 
 	for (int i = 0; i < set->sample_count; i++)
 	{
+	    double delta_rot1_hat, delta_trans_hat, delta_rot2_hat;
 		pf_sample_t* sample = set->samples + i;
 
 		// Sample pose differences
@@ -224,17 +233,13 @@ double SelfLocalizer::calculateMoveModel(OdometryData* data, pf_sample_set_t* se
 
 double SelfLocalizer::calculateBeamModel(LaserData *data, pf_sample_set_t* set)
 {
-	pf_sample_t *sample;
-	pf_vector_t pose;
-	
-	double mapRange;
-	double obsRange, obsBearing;
-	double z, pz; // What is z/pz ?
-	
 	double totalWeight = 0.0;
-	
+	#pragma omp parallel for reduction( +:totalWeight)
 	for (int j = 0; j < set->sample_count; j++)
 	{
+	    pf_vector_t pose;
+	    pf_sample_t *sample;
+		
 		sample = set->samples + j;
 		pose = sample->pose;
 
@@ -243,8 +248,13 @@ double SelfLocalizer::calculateBeamModel(LaserData *data, pf_sample_set_t* set)
 
 		double p = 1.0;
 		int step = (data->mRangeCount - 1) / (sMaxBeams - 1);
+		#pragma omp parallel for reduction( +:p)
 		for (int i = 0; i < data->mRangeCount; i+=step)
 		{
+	        double obsRange, obsBearing;
+	        double mapRange;
+	        double z, pz; // What is z/pz ?
+			
 			obsRange = data->mRanges[i][0];
 			obsBearing = data->mRanges[i][1];
 			mapRange = map_calc_range(sMap, pose.v[0], pose.v[1], pose.v[2]+obsBearing, data->mRangeMax);
@@ -282,15 +292,15 @@ double SelfLocalizer::calculateBeamModel(LaserData *data, pf_sample_set_t* set)
 double SelfLocalizer::calculateLikelihoodFieldModel(LaserData *data, pf_sample_set_t* set)
 {
 	int i, step;
-	double obsRange, obsBearing;
 	double totalWeight = 0.0;
-	pf_sample_t* sample;
-	pf_vector_t pose;
-	pf_vector_t hit;
 
 	// Compute the sample weights
+	#pragma omp parallel for reduction( +:totalWeight)
 	for (int j = 0; j < set->sample_count; j++)
 	{
+	    pf_sample_t* sample;
+	    pf_vector_t pose;
+		
 		sample = set->samples + j;
 		pose = sample->pose;
 
@@ -303,8 +313,12 @@ double SelfLocalizer::calculateLikelihoodFieldModel(LaserData *data, pf_sample_s
 		double p = 1.0;
 
 		step = (data->mRangeCount - 1) / (sMaxBeams - 1);
+		#pragma omp parallel for reduction( +:p)
 		for (i = 0; i < data->mRangeCount; i += step)
 		{
+	        double obsRange, obsBearing;
+	        pf_vector_t hit;
+			
 			obsRange = data->mRanges[i][0];
 			obsBearing = data->mRanges[i][1];
 
@@ -426,10 +440,9 @@ void SelfLocalizer::process(const sensor_msgs::LaserScan::ConstPtr& scan)
 	// Update motion model with odometry data
 	OdometryData odom(tfPose, mLastPose);
 
-	double dist = odom.mDeltaX * odom.mDeltaX + odom.mDeltaY * odom.mDeltaY;
-	if(dist < mMinTranslation && fabs(odom.mDeltaTheta) < mMinRotation)
+	if(!mLocalizeTrigger)
 		return;
-
+	mLocalizeTrigger = false;
 	mProcessedScans++;
 	pf_update_action(mParticleFilter, mActionModelFunction, (void*) &odom);
 	mLastPose = tfPose;
@@ -444,6 +457,7 @@ void SelfLocalizer::process(const sensor_msgs::LaserScan::ConstPtr& scan)
 	// Create the map-to-odometry transform
 	tf::Transform map2robot = getBestPose();
 	tf::Stamped<tf::Pose> odom2map;
+	ROS_ERROR("CCCC");
 	try
 	{
 		tf::Stamped<tf::Pose> robot2map;
@@ -477,6 +491,7 @@ void SelfLocalizer::convertMap( const nav_msgs::OccupancyGrid& map_msg )
 	// Convert to pf-internal format
 	map->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
 	ROS_ASSERT(map->cells);
+	#pragma omp parallel for
 	for(int i = 0; i < map->size_x * map->size_y; i++)
 	{
 		if(map_msg.data[i] == 0)
@@ -563,6 +578,7 @@ void SelfLocalizer::publishParticleCloud()
 	cloud_msg.header.stamp = ros::Time::now();
 	cloud_msg.header.frame_id = mMapFrame.c_str();
 	cloud_msg.poses.resize(set->sample_count);
+	#pragma omp parallel for
 	for(int i = 0; i < set->sample_count; i++)
 	{
 		double x = set->samples[i].pose.v[0];

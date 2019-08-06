@@ -79,12 +79,13 @@ private:
 	double mMapResolution;      // Resolution of published grid map.
 	double mRangeThreshold;     // Maximum range of laser sensor. (All robots MUST use the same due to Karto-Mapper!)
 	double mMaxCovariance;      // When to accept the result of the particle filter?
-	int mState;	                // What am I doing? (waiting, localizing, mapping)
-	int mMapUpdateRate;	        // Publish the map every # received updates.
+	int mState;	            // What am I doing? (waiting, localizing, mapping)
+	int mMapUpdateRate;	    // Publish the map every # received updates.
 	bool mPublishPoseGraph;	    // Whether or not to publish the pose graph as marker-message.
 	int mNodesAdded;            // Number of nodes added to the pose graph.
 	int mMinMapSize;            // Minimum map size (# of nodes) needed for localization.
 	ros::WallTime mLastMapUpdate;
+	ros::Time mScantime;
 
 	// Frames and Topics
 	std::string mLaserFrame;

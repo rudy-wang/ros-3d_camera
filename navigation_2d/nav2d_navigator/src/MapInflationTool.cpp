@@ -6,6 +6,14 @@ CellData::CellData(double d, double i, unsigned int sx, unsigned int sy):distanc
 
 MapInflationTool::MapInflationTool()
 {
+	ros::NodeHandle nh("/Mapper");
+	ros::NodeHandle nh2("/Operator/local_map");
+	nh.param("grid_resolution", mResolution, 0.02);
+	nh2.param("width", mMapW, 5.0);
+	nh2.param("height", mMapH, 5.0);
+	mMapW = mMapW/2;
+	mMapH = mMapH/2;
+	mMapCellRadius = (sqrt(pow(mMapW,2)+pow(mMapH,2))+2)/mResolution;
 	mInflationMarkers = NULL;
 	mCachedCosts = NULL;
 	mCachedDistances = NULL;
@@ -72,7 +80,7 @@ inline char MapInflationTool::costLookup(int mx, int my, int src_x, int src_y)
 }
 
 // Main method to start the inflation on the given map in-place.
-void MapInflationTool::inflateMap(GridMap* map)
+void MapInflationTool::inflateMap(GridMap* map, int robotIdx, std::vector< std::vector<double> > &EucDistanceTable)
 {
 	ROS_DEBUG("Started map inflation ...");
 	
@@ -90,6 +98,8 @@ void MapInflationTool::inflateMap(GridMap* map)
 	
 	// 1. Put all real obstacles in a queue
 	while(!mInflationQueue.empty()) mInflationQueue.pop();
+	unsigned int Rx, Ry;
+	mGridMap->getCoordinates(Rx, Ry, robotIdx);
 	#pragma omp parallel for
 	for(int index = 0; index < mapSize; index++)
 	{
@@ -97,6 +107,13 @@ void MapInflationTool::inflateMap(GridMap* map)
 		{
 			unsigned int sx, sy;
 			mGridMap->getCoordinates(sx, sy, index);
+			unsigned int disX = abs(sx-Rx), disY = abs(sy-Ry);
+			double tmpdis = (disX<=2000 && disY<=2000 ? EucDistanceTable[disX][disY] : sqrt(pow(disX,2)+pow(disY,2)));
+			if(tmpdis>mMapCellRadius)
+			{
+				mInflationMarkers[index] = 1;
+				continue;
+			}
 			enqueueObstacle(index, sx, sy);
 		}else if(mGridMap->getData(index) == -1)
 		{
@@ -112,6 +129,7 @@ void MapInflationTool::inflateMap(GridMap* map)
 		mInflationQueue.pop();
 		unsigned int x,y;
 		if(!mGridMap->getCoordinates(x, y, cell.index)) continue;
+
 		if(x >= 1)
 			enqueueObstacle(cell.index-1, cell.sx, cell.sy);
 		if(x < mGridMap->getWidth() - 1)	
@@ -129,8 +147,8 @@ void MapInflationTool::inflateMap(GridMap* map)
 void MapInflationTool::enqueueObstacle(unsigned int index, unsigned int sx, unsigned int sy)
 {
 	unsigned int mx, my;
-	if(!mGridMap->getCoordinates(mx, my, index)) return;
 	if(mInflationMarkers[index] != 0) return;
+	if(!mGridMap->getCoordinates(mx, my, index)) return;
 	
 	double distance = distanceLookup(mx, my, sx, sy);
 	if(distance == 999)

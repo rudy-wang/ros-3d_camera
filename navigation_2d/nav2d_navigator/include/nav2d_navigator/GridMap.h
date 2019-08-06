@@ -82,7 +82,7 @@ public:
 	{
 		int y = index / mMapWidth;
 		int x = index % mMapWidth;
-		
+		if(getData(x, y) > 0) return false;
 		if(getData(x-1, y-1) == -1) return true;
 		if(getData(x-1, y  ) == -1) return true;
 		if(getData(x-1, y+1) == -1) return true;
